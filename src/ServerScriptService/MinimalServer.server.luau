@@ -98,3 +98,8 @@ local customServersRemote = findRemote("dYE", GET_CUSTOM_SERVERS_FUNCTION_ID)
 customServersRemote.OnServerEvent:Connect(onCustomServersRequest)
 
 Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- Cover players who joined before this script started.
+for _, player in Players:GetPlayers() do
+	task.spawn(onPlayerAdded, player)
+end
