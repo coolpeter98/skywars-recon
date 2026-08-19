@@ -45,8 +45,11 @@ function TweenUtil.fadeOutSync(instance: Instance, duration: number)
 		completed:Wait()
 	end
 end
-function TweenUtil.restoreTween(propertyMap: { [Instance]: { [string]: any } }, duration: number?)
-	for instance, properties in propertyMap do
+function TweenUtil.restoreTween(fadeTween: FadeOutTween, duration: number?)
+	-- Callers pass the fadeOutAsync tween group; the decompiler lost the
+	-- PropertyMap access, so restore each instance from the group's
+	-- recorded original properties.
+	for instance, properties in fadeTween.PropertyMap do
 		local tweenDuration = duration == nil and 0 or duration
 		TweenService:Create(instance, TweenInfo.new(tweenDuration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), properties):Play()
 	end

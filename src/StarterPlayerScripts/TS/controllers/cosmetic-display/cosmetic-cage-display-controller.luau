@@ -87,7 +87,7 @@ end
 function CosmeticCageDisplayController.equip(self: CosmeticCageDisplayController, id: string, cosmetic): any
 	local definition = Cosmetics[id]
 	local maid = Maid.new()
-	if definition.Type ~= "Cage" then
+	if definition == nil or definition.Type ~= "Cage" then
 		return maid
 	end
 	local position = cosmetic.Position
