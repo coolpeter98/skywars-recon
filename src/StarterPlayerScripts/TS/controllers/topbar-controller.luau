@@ -11,6 +11,7 @@ local ScreenUtil = RuntimeLib.import(script, script.Parent.Parent, "ui", "util",
 local PlaceUtil = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "place", "place-util").PlaceUtil
 local SettingsScreen = RuntimeLib.import(script, script.Parent.Parent, "ui", "settings", "settings-screen").SettingsScreen
 local GuiService: GuiService = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services").GuiService
+local RunService: RunService = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services").RunService
 
 type TopbarController = {
 	icons: { any },
@@ -106,7 +107,10 @@ end
 
 function TopbarController.shouldFurl(_)
 	local result
-	if GuiService.TopbarInset.Height > 45 then
+	-- Studio's topbar inset can exceed the mobile threshold, which would
+	-- furl the settings gear into a menu. Published places keep the
+	-- original behavior; local testing matches production (no furl).
+	if not RunService:IsStudio() and GuiService.TopbarInset.Height > 45 then
 		result = ScreenUtil.isMobile()
 	else
 		result = false
