@@ -289,6 +289,13 @@ local PlaceUtil = {
 		if placeId == nil then
 			placeId = game.PlaceId
 		end
+		-- Unsaved Studio places (PlaceId 0) behave as the lobby so the full
+		-- lobby UI (play button, party, settings) can be exercised locally.
+		-- Published places are unaffected; game-mode testing in Studio is
+		-- still available by temporarily removing this fallback.
+		if RunService:IsStudio() and placeId == 0 then
+			return true
+		end
 		for _, placeGroup in placeGroups do
 			if placeGroup.PlaceGroupType == PlaceGroupType.Game and placeGroup.Lobby.PlaceId == placeId then
 				return true
