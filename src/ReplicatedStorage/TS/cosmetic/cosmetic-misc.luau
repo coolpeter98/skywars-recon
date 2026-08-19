@@ -1,0 +1,5 @@
+-- CosmeticMisc
+
+return {
+	["CosmeticMisc"] = {},
+}

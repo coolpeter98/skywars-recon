@@ -1,0 +1,2 @@
+-- VRNavigation: Roblox built-in PlayerModule component.
+-- Skipped by the decompiler (default Roblox module shipped in the place file); no game code to reconstruct.

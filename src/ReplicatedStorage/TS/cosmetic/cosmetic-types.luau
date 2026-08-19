@@ -1,0 +1,3 @@
+-- CosmeticTypes
+
+return nil

@@ -1,0 +1,7 @@
+{
+  "className": "TextChatCommand",
+  "properties": {
+    "PrimaryAlias": "/mute",
+    "SecondaryAlias": "/m"
+  }
+}

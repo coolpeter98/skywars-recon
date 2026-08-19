@@ -1,0 +1,1 @@
+-- AtomicBinding (stub: original file contained no code; skipped by decompiler)

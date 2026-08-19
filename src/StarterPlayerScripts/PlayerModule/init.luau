@@ -1,0 +1,2 @@
+-- PlayerModule: stock Roblox default PlayerModule entry (shipped in the place file);
+-- skipped by the decompiler — no game code to reconstruct.

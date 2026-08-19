@@ -1,0 +1,14 @@
+{
+  "className": "ChatInputBarConfiguration",
+  "properties": {
+    "FontFace": {
+      "family": "rbxasset://fonts/families/GothamSSm.json",
+      "weight": "Medium",
+      "style": "Normal",
+      "cachedFaceId": null
+    }
+  },
+  "attributes": {
+    "Rojo_Target_TargetTextChannel": "003c594e1eee4ce9ca7430280000029a"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "className": "TextChatCommand",
+  "properties": {
+    "SecondaryAlias": "/tp",
+    "PrimaryAlias": "/Teleport"
+  }
+}

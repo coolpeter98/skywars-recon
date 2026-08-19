@@ -1,0 +1,11 @@
+{
+  "className": "ChannelTabsConfiguration",
+  "properties": {
+    "FontFace": {
+      "family": "rbxasset://fonts/families/BuilderSans.json",
+      "weight": "Bold",
+      "style": "Normal",
+      "cachedFaceId": null
+    }
+  }
+}

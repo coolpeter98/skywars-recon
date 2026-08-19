@@ -1,0 +1,7 @@
+{
+  "className": "TextChatCommand",
+  "properties": {
+    "PrimaryAlias": "/whisper",
+    "SecondaryAlias": "/w"
+  }
+}

@@ -1,0 +1,3 @@
+-- RobloxConstant
+
+return nil

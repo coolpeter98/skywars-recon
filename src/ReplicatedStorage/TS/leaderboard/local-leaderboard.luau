@@ -1,0 +1,3 @@
+-- LocalLeaderboard
+
+return nil

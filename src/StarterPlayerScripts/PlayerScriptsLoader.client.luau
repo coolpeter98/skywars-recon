@@ -1,0 +1,3 @@
+-- PlayerScriptsLoader
+-- Intentionally left as an empty stub in the original game (the Flamework
+-- client bootstrap is handled by a separate script).

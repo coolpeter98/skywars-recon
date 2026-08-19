@@ -1,0 +1,121 @@
+{
+  "name": "SkyWars SEASON 3",
+  "tree": {
+    "$className": "DataModel",
+    "Chat": {
+      "$properties": {
+        "BubbleChatEnabled": true,
+        "IsAutoMigrated": true
+      },
+      "$path": "src/Chat"
+    },
+    "JointsService": {
+      "$properties": {
+        "Capabilities": {
+          "SecurityCapabilities": 0
+        },
+        "Sandboxed": false,
+        "SourceAssetId": -1.0,
+        "Tags": []
+      },
+      "$path": "src/JointsService"
+    },
+    "Lighting": {
+      "$properties": {
+        "Ambient": [
+          0.5899999737739563,
+          0.5899999737739563,
+          0.5899999737739563
+        ],
+        "Brightness": 3.0,
+        "EnvironmentDiffuseScale": 0.5,
+        "EnvironmentSpecularScale": 1.0,
+        "GeographicLatitude": 0.0,
+        "GlobalShadows": true,
+        "LightingStyle": "Realistic",
+        "OutdoorAmbient": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "PrioritizeLightingQuality": true,
+        "Technology": "Future"
+      },
+      "$path": "src/Lighting"
+    },
+    "LocalizationService": {
+      "$path": "src/LocalizationService"
+    },
+    "MaterialService": {
+      "$path": "src/MaterialService"
+    },
+    "Players": {
+      "$properties": {
+        "CharacterAutoLoads": false,
+        "MaxPlayers": 40.0,
+        "PreferredPlayers": 40.0,
+        "UseStrafingAnimations": true
+      },
+      "$path": "src/Players"
+    },
+    "README": {
+      "$path": "src/README.server.luau"
+    },
+    "ReplicatedFirst": {
+      "$path": "src/ReplicatedFirst"
+    },
+    "ReplicatedStorage": {
+      "$path": "src/ReplicatedStorage"
+    },
+    "ServerStorage": {
+      "$path": "src/ServerStorage"
+    },
+    "SoundService": {
+      "$properties": {
+        "RespectFilteringEnabled": true
+      },
+      "$path": "src/SoundService"
+    },
+    "StarterGui": {
+      "$path": "src/StarterGui"
+    },
+    "StarterPack": {
+      "$path": "src/StarterPack"
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "$path": "src/StarterPlayerScripts"
+      },
+      "$properties": {
+        "CameraMaxZoomDistance": 10.0,
+        "EnableMouseLockOption": false
+      },
+      "$path": "src/StarterPlayer"
+    },
+    "Teams": {
+      "$path": "src/Teams"
+    },
+    "TextChatService": {
+      "$properties": {
+        "ChatVersion": "TextChatService"
+      },
+      "$path": "src/TextChatService"
+    },
+    "Workspace": {
+      "$properties": {
+        "ClientAnimatorThrottling": "Enabled",
+        "CollisionGroupData": {
+          "BinaryString": "AQIABP////8HRGVmYXVsdAEE/f///wdQbGF5ZXIx"
+        },
+        "DistributedGameTime": 3.804166874382645,
+        "PlayerCharacterDestroyBehavior": "Enabled",
+        "StreamingEnabled": true,
+        "UseNewLuauTypeSolver": "Default"
+      },
+      "$attributes": {
+        "Rojo_Target_CurrentCamera": "152bef0602fef381ca74302800000215"
+      },
+      "$path": "src/Workspace"
+    }
+  }
+}

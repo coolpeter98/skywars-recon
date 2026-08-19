@@ -1,0 +1,11 @@
+{
+  "className": "ChatWindowConfiguration",
+  "properties": {
+    "FontFace": {
+      "family": "rbxasset://fonts/families/GothamSSm.json",
+      "weight": "Medium",
+      "style": "Normal",
+      "cachedFaceId": null
+    }
+  }
+}

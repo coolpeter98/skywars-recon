@@ -1,0 +1,6 @@
+{
+  "className": "TextChatCommand",
+  "properties": {
+    "PrimaryAlias": "/console"
+  }
+}
