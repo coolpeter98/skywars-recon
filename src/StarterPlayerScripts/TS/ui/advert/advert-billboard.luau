@@ -57,14 +57,17 @@ local function AdvertBillboard(props: AdvertBillboardProps)
 		maxTextWidth = math.max(lineWidth, maxTextWidth)
 		totalTextHeight = totalTextHeight + lineTextProps.Size.Y.Offset
 	end
-	local onTimerUpdate = nil
-	local timerUpdateArg1 = nil
-	local timerUpdateArg2 = nil
 	local secondsLeft = props.ExpireTime == nil and 0
 		or useTimer({
 			["EndTime"] = props.ExpireTime,
 			["OnUpdate"] = function(timeLeft)
-				return onTimerUpdate(timeLeft, timerUpdateArg1, timerUpdateArg2)
+				-- The decompiler lost the original update helper; update the
+				-- countdown label directly with the same text format the
+				-- initial render uses.
+				local updatedProps = getCountdownTextProps(props.ExpirePrefix, timeLeft)
+				if countdownTextRef.current then
+					countdownTextRef.current.Text = updatedProps.Text
+				end
 			end,
 		})
 	local countdownProps = getCountdownTextProps(props.ExpirePrefix, secondsLeft)
