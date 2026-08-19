@@ -36,8 +36,7 @@ return {
 			local firstRow = false
 			local row = 0
 			local generatedImages = {}
-			do
-				::nextRow::
+			while true do
 				if firstRow then
 					row = row + 1
 				else
@@ -73,7 +72,6 @@ return {
 					table.insert(generatedImages, image)
 				end
 				randomOffset = randomOffset + 1
-				goto nextRow
 			end
 		end, {})
 		return {

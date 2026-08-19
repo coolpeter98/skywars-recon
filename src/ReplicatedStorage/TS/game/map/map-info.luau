@@ -242,6 +242,7 @@ for _, mapInfo: MapInfo in
 		},
 	}
 do
+	local shouldAddToMaps = true
 	if RunService:IsServer() then
 		local ServerStorage: ServerStorage = game:GetService("ServerStorage")
 		if PlaceUtil.isProduction() or ServerStorage.Maps[mapInfo.GameType]:FindFirstChild(mapInfo.Name) then
@@ -254,11 +255,12 @@ do
 					mapInfo.PartySupported = false
 				end
 			end
-			goto addToMaps
+		else
+			print("Skipped loading map")
+			shouldAddToMaps = false
 		end
-		print("Skipped loading map")
-	else
-		::addToMaps::
+	end
+	if shouldAddToMaps then
 		maps[mapInfo.Name] = mapInfo
 	end
 end

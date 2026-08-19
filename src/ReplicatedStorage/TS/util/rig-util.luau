@@ -31,21 +31,20 @@ equipAccessory = function(character: Model, accessory: Model, skinId: string, is
 				local parentName = descendant.Parent.Name
 				local attachmentName = descendant.Name
 				if (not isLegacy or parentName ~= "LowerTorso" and parentName ~= "HumanoidRootPart" and (attachmentName ~= "LeftShoulderRigAttachment" and attachmentName ~= "RightShoulderRigAttachment" or parentName ~= "UpperTorso") and ((attachmentName ~= "LeftKneeRigAttachment" and attachmentName ~= "RightKneeRigAttachment" or parentName ~= "LeftUpperLeg" and parentName ~= "RightUpperLeg") and ((attachmentName ~= "NeckRigAttachment" or parentName ~= "UpperTorso") and ((attachmentName ~= "LeftWristRigAttachment" or parentName ~= "LeftLowerArm") and ((attachmentName ~= "RightWristRigAttachment" or parentName ~= "RightLowerArm") and (not skinId or skinId ~= CosmeticId.ChestplateSpartan and skinId ~= CosmeticId.ChestplateAzazel or (attachmentName ~= "LeftElbowRigAttachment" or parentName ~= "LeftUpperArm") and (attachmentName ~= "RightElbowRigAttachment" or parentName ~= "RightUpperArm"))))))) and descendant.Name == attachment.Name then
-					if isLegacy then
-						::setTarget::
-						if targetAttachment ~= nil then
-							print("Attachment name collision: " .. descendant.Parent.Name)
-						end
-						targetAttachment = descendant
-					else
+					local shouldSetTarget = isLegacy
+					if not isLegacy then
 						local unriggedName = string.gsub(attachment.Name, "RigAttachment", "")
 						local motor = descendant.Parent:FindFirstChildOfClass("Motor6D")
 						if motor ~= nil then
 							motor = motor.Name
 						end
-						if motor == unriggedName then
-							goto setTarget
+						shouldSetTarget = motor == unriggedName
+					end
+					if shouldSetTarget then
+						if targetAttachment ~= nil then
+							print("Attachment name collision: " .. descendant.Parent.Name)
 						end
+						targetAttachment = descendant
 					end
 				end
 			end
