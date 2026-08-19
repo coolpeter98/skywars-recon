@@ -16,7 +16,9 @@ type Trade = {
 	LastItemUpdateTime: number?,
 }
 
-local TradeUtil = {
+local TradeUtil  = nil
+
+TradeUtil = {
 	["getTradePlayerKey"] = function(trade: Trade, player: Player): string
 		return trade.Players.Requester.UserId == player.UserId and "Requester" or "Requestee"
 	end,

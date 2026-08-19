@@ -12,7 +12,9 @@ local RegionPricing = RuntimeLib.import(
 local GameProducts =
 	RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "game-product", "game-product").GameProducts
 
-local RegionalPricingUtil = {
+local RegionalPricingUtil  = nil
+
+RegionalPricingUtil = {
 	getGameProduct = function(productId: string, pricingRegions: { [string]: number }): any
 		local gameProduct = GameProducts[productId]
 		local region = RegionalPricingUtil.getPricingRegion(pricingRegions)

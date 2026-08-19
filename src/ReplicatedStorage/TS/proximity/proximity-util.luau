@@ -6,7 +6,9 @@ type ProximityUtil = {
 	createProximityPrompt: (objectText: string?, actionText: string?) -> ProximityPrompt,
 }
 
-local ProximityUtil: ProximityUtil = {
+local ProximityUtil: ProximityUtil  = nil
+
+ProximityUtil = {
 	createProximityActivator = function(maxActivationDistance: number): ProximityPrompt
 		local prompt = ProximityUtil.createProximityPrompt(nil, nil)
 		prompt.RequiresLineOfSight = false

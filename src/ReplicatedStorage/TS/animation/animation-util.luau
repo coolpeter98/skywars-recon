@@ -12,7 +12,9 @@ local RunService: RunService = RuntimeLib.import(
 	"services"
 ).RunService
 
-local AnimationUtil = {
+local AnimationUtil  = nil
+
+AnimationUtil = {
 	["createHumanoidAnimation"] = function(humanoid: Humanoid, animationId: string): AnimationTrack
 		local animator = humanoid:WaitForChild("Animator") :: Animator
 		local animation = Instance.new("Animation")

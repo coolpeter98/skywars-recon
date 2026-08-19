@@ -24,7 +24,9 @@ type ProgressBar = {
 	OnComplete: (() -> ())?,
 }
 
-local ProgressBarUtil = {
+local ProgressBarUtil  = nil
+
+ProgressBarUtil = {
 	["getBarColor"] = function(colors: { Color3 }, progress: number): Color3
 		return ColorUtil.lerpMultiColorRgbViaCieluv(1 - progress, unpack(colors))
 	end,
