@@ -117,7 +117,7 @@ end
 
 Reflect.defineMetadata(LeaderboardController, "identifier", "xBL")
 Reflect.defineMetadata(LeaderboardController, "flamework:implements", { "$:flamework@OnStart" })
-Controller.decorate(LeaderboardController, "$:flamework@Controller", Controller, {})
+Reflect.decorate(LeaderboardController, "$:flamework@Controller", Controller, {})
 return {
 	["LeaderboardController"] = LeaderboardController,
 }
