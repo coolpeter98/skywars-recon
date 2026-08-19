@@ -220,6 +220,13 @@ local ninjaCrate: CrateDefinition = {
 		}
 	}
 }
+-- Decompiler helper (definition was lost during the rename pass; restored for correctness)
+local function __set_list(list: { any }, startIndex: number, values: { any })
+	for i = 1, #values do
+		list[startIndex + i - 1] = values[i]
+	end
+end
+
 __set_list(crateList, 1, { knightBruteCrate, ninjaCrate })
 local function getCrateGameProducts(crateId: string): { CrateGameProduct }
 	local index = 0

@@ -107,6 +107,13 @@ local componentOptions = {
 		})
 	),
 }
+-- Decompiler helper (definition was lost during the rename pass; restored for correctness)
+local function __set_list(list: { any }, startIndex: number, values: { any })
+	for i = 1, #values do
+		list[startIndex + i - 1] = values[i]
+	end
+end
+
 __set_list(decoratorArgs, 1, { componentOptions })
 decorate(chestComponent, "$c:components@Component", Component, decoratorArgs)
 

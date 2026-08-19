@@ -485,6 +485,13 @@ local generatorUpgrade: TeamUpgrade = {
 		}
 	}
 }
+-- Decompiler helper (definition was lost during the rename pass; restored for correctness)
+local function __set_list(list: { any }, startIndex: number, values: { any })
+	for i = 1, #values do
+		list[startIndex + i - 1] = values[i]
+	end
+end
+
 __set_list(teamUpgrades, 1, {triumphUpgrade, vampyrismUpgrade, healingWizardUpgrade, lastStandUpgrade, lootingLuckUpgrade, generatorUpgrade})
 merchantShop.TeamUpgrades = teamUpgrades
 __set_list(shops, 1, {blacksmithShop, quickShop, merchantShop})

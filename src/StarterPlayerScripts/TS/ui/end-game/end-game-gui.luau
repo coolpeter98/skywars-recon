@@ -72,6 +72,13 @@ local function EndGameGui(props)
 		if shopAnimation then
 			shopAnimation = setupAnimation(shopAnimation, 2, "right")
 		end
+-- Decompiler helper (definition was lost during the rename pass; restored for correctness)
+local function __set_list(list: { any }, startIndex: number, values: { any })
+	for i = 1, #values do
+		list[startIndex + i - 1] = values[i]
+	end
+end
+
 		__set_list(animationList, 1, { statsAnimation, seasonPassAnimation, shopAnimation })
 		animations.current = filterDefined(animationList)
 		task.spawn(function()

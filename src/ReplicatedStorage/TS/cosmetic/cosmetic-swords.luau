@@ -205,6 +205,13 @@ local Chainsaw: CosmeticDefinition = {
 		["MeleeInterval"] = Vector2.new(2, 4)
 	}
 }
+-- Decompiler helper (definition was lost during the rename pass; restored for correctness)
+local function __set_list(list: { any }, startIndex: number, values: { any })
+	for i = 1, #values do
+		list[startIndex + i - 1] = values[i]
+	end
+end
+
 __set_list(CosmeticSwords, 1, {SupporterSword, TrainingSword, Cutlass, DoubleAxe, KnightsBlade, Rapier, WarAxe, Wrench, WarHammer, RingSword, RazorSword, Pan, NatureAxe, NatureSword, Hatchet, Chainsaw})
 local Claws: CosmeticDefinition = {
 	["Id"] = nil,

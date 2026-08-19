@@ -2318,6 +2318,13 @@ local inventoryDefinition = {
 	})),
 	["Size"] = t.number
 }
+-- Decompiler helper (definition was lost during the rename pass; restored for correctness)
+local function __set_list(list: { any }, startIndex: number, values: { any })
+	for i = 1, #values do
+		list[startIndex + i - 1] = values[i]
+	end
+end
+
 __set_list(setValueTypes, 1, {tBoolean, tNumber, tVector3, tNumberArray, partyType, profileType, stringNumberMap, gameDataType, serverDataType, tInterface(inventoryDefinition), t.map(t.string, t.interface({
 	["ActionBarId"] = t.string,
 	["Image"] = t.string,
