@@ -59,7 +59,7 @@ end
 function ActionBarController.constructor(_) end
 
 function ActionBarController.onStart(self: ActionBarController)
-	Events["8c84ed0f-84a1-4988-900e-10f532b65dc3"]:connect(function(image: string, text: string, color: Color3)
+	Events.ActionBarAdded:connect(function(image: string, text: string, color: Color3)
 		self:displayActionBar(image, text, color)
 	end)
 	self:mountActionBarScreen()

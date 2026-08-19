@@ -73,14 +73,14 @@ function SoundController.constructor(self: SoundController)
 	end
 end
 function SoundController.onStart(self: SoundController)
-	Events["bb8d7ed5-947e-400b-a974-91b683985538"]:connect(function(soundName, soundId, position, soundProps)
+	Events.SoundPlayed:connect(function(soundName, soundId, position, soundProps)
 		if position then
 			self:playSoundAtPosition(soundId, position, soundProps, soundName)
 		else
 			self:playSound(soundId, soundProps, soundName)
 		end
 	end)
-	Events["3bcbb793-b652-4b4c-9fa9-d94994df120e"]:connect(function(soundName)
+	Events.SoundStopped:connect(function(soundName)
 		local sound = self.soundsFolder:FindFirstChild(soundName)
 		if sound ~= nil then
 			sound:Destroy()

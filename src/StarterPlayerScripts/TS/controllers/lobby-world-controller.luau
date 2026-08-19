@@ -72,7 +72,7 @@ function LobbyWorldController.onStart(self: LobbyWorldController)
 	if lobby then
 		self:setWorld(lobby)
 	end
-	Events["c606c55c-b44f-4980-a109-3876a74729cf"]:connect(function(world)
+	Events.JoinWorld:connect(function(world)
 		self:setWorld(world)
 	end)
 	self:bindWorldLoaded(function()

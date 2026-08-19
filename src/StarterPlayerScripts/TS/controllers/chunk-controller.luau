@@ -78,7 +78,7 @@ function ChunkController.constructor(self: ChunkController)
 end
 
 function ChunkController.onStart(self: ChunkController)
-	Events["c115cff4-99f8-44d5-aa61-d6b8ba42aa3c"]:connect(function(chunkPosition: Vector2, buffer: string)
+	Events.ChunkData:connect(function(chunkPosition: Vector2, buffer: string)
 		local decoder = BufferDecoder.new(buffer)
 		local shapeCount = decoder:readVarInt()
 		local hasStarted = false
@@ -118,7 +118,7 @@ function ChunkController.onStart(self: ChunkController)
 			table.insert(greedyShapes, shape)
 		end
 	end)
-	Events["b5918630-ecd8-49c1-8aac-938f5ba6ab5d"]:connect(function(chunkPosition: Vector2)
+	Events.ChunkUnloaded:connect(function(chunkPosition: Vector2)
 		local chunkTasks = self.chunkTasks
 		local task = {
 			["Type"] = ChunkTaskType.Unload,

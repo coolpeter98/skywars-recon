@@ -40,7 +40,7 @@ function RoduxController.constructor(self: RoduxController)
 	self.replicatedHistory = {}
 end
 function RoduxController.onStart(self: RoduxController)
-	Events["4e368d35-2565-4359-97cb-b7714d75fe09"]:connect(function(payload)
+	Events.SetValue:connect(function(payload)
 		GlobalStore:dispatch(payload)
 		local shouldReplicate = payload.type == "SetValue"
 		if shouldReplicate then

@@ -91,7 +91,7 @@ function PurchaseController.promptPurchase(self: PurchaseController, gameProduct
 	Flamework.resolveDependency("MMv"):tryLeaveQueue()
 	local gameProduct = Flamework.resolveDependency("1EA"):getGameProduct(gameProductId)
 	if gameProduct.PrimedCosmeticType and cosmeticId then
-		Events["348fe8a4-937e-42c6-826c-93b9ed95758a"]:fire(cosmeticId)
+		Events.PrimeCosmeticPurchase:fire(cosmeticId)
 	end
 	if purchaseType == PurchaseType.Gems then
 		self:promptPurchaseWithGems(gameProduct)
@@ -115,7 +115,7 @@ function PurchaseController.promptPurchaseWithGems(self: PurchaseController, gam
 	confirmationScreen = Flamework.resolveDependency("lB5"):open(ConfirmationScreen, {
 		["Text"] = ("Would you like to purchase: %*?"):format(gameProduct.DisplayName),
 		["OnConfirm"] = function()
-			return Events["78704d35-029c-4019-8aac-69abee216dab"]:fire(gameProduct.ProductId)
+			return Events.PurchaseProduct:fire(gameProduct.ProductId)
 		end,
 		["IsOpen"] = function()
 			return confirmationScreen:isOpen()

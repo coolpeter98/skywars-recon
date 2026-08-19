@@ -70,7 +70,7 @@ function VerificationController.toggleScreen(self: VerificationController)
 		return nil
 	end
 	local shouldOpen = self.screenController:toggle(VerifyScreen)
-	Events["9d1d5eec-c9e9-44c4-be64-77c3015ac866"]:fire(shouldOpen)
+	Events.SetVerificationOpen:fire(shouldOpen)
 	if shouldOpen then
 		task.spawn(function()
 			while self.screenController:isOpen("Verify") and not self:attemptVerification() do
@@ -83,7 +83,7 @@ function VerificationController.attemptVerification(self: VerificationController
 	if self:isVerified() or not self:pollVerification() then
 		return false
 	end
-	Events["3942c47c-52b7-435e-ae89-8e6d6c5954fb"]:fire()
+	Events.RequestVerification:fire()
 	return true
 end
 function VerificationController.pollVerification(_: VerificationController)

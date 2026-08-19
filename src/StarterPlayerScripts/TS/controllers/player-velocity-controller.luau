@@ -52,7 +52,7 @@ function PlayerVelocityController.constructor(self)
 end
 
 function PlayerVelocityController.onStart(self)
-	Events["58e809cd-221e-402b-b940-bb0607ed2727"]:connect(function(damage)
+	Events.DamageImpulse:connect(function(damage)
 		local humanoid: Humanoid? = GetHumanoid()
 		local primaryPart = GetCharacter()
 		if primaryPart ~= nil then

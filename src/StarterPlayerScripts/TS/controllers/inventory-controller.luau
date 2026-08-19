@@ -91,7 +91,7 @@ end
 
 function InventoryController.onStart(self: InventoryController)
 	-- Equip tool
-	Events["2d91bf4c-2ff1-429f-a577-c4017358a99a"]:connect(function(player: Player, toolId: string?, skinId: string?)
+	Events.ToolEquipped:connect(function(player: Player, toolId: string?, skinId: string?)
 		local character = player.Character
 		if not character then
 			return nil
@@ -112,7 +112,7 @@ function InventoryController.onStart(self: InventoryController)
 		CharacterUtil.equipTool(character, toolId, skinId)
 	end)
 	-- Prediction reverted
-	Events["599674e0-8d34-4741-b537-d95824e02b97"]:connect(function(predictionId: string)
+	Events.InventoryPredictionReverted:connect(function(predictionId: string)
 		local prediction = self.itemPredictions[predictionId]
 		if not prediction then
 			return nil
@@ -127,23 +127,23 @@ function InventoryController.onStart(self: InventoryController)
 		self.itemPredictions[predictionId] = nil
 	end)
 	-- Inventory updated
-	Events["8ef7d27d-8b46-4b9d-bda1-abf6bcbc5442"]:connect(
+	Events.InventoryUpdated:connect(
 		function(itemType: string, quantity: number, predictionId: string?)
 			self:updateInventory(itemType, quantity, predictionId)
 		end
 	)
 	-- Inventory cleared
-	Events["df2caede-e316-45d8-a9c9-aaa661bf8bf1"]:connect(function()
+	Events.InventoryCleared:connect(function()
 		self:clearInventory()
 	end)
 	-- Round ended
-	Events["b9b935e9-55ee-43ad-be87-84a7ef56cad9"]:connect(function()
+	Events.Spectate:connect(function()
 		self:clearInventory()
 		self.screenController:close(InventoryScreen)
 		self.screenController:close(ChestScreen)
 	end)
 	-- Player died
-	Events["d7ee8722-a04c-4d29-a954-e324fb1fff79"]:connect(function(player: Player)
+	Events.PlayerEliminated:connect(function(player: Player)
 		if Players.LocalPlayer ~= player then
 			return nil
 		end
@@ -170,7 +170,7 @@ function InventoryController.registerItemPrediction(
 		["Type"] = itemType,
 		["Quantity"] = quantity,
 	}
-	Events["aa401bf8-efdd-488d-97e4-1bee929f4a1d"](itemType, quantity, predictionId)
+	Events.ItemPickup(itemType, quantity, predictionId)
 	return predictionId
 end
 

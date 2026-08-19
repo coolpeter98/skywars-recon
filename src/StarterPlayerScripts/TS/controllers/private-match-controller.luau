@@ -97,55 +97,55 @@ function PrivateMatchController.toggleCustomMatchSettings(self)
 end
 
 function PrivateMatchController.startGame(_)
-	Events["d887b207-66e8-4bf5-9cf8-f4b83ceefa37"]:fire()
+	Events.StartPrivateMatch:fire()
 end
 
 function PrivateMatchController.setServerName(_, serverName)
-	Events["a81b8311-38b0-4c39-82db-bd35af3384b4"]:fire(serverName)
+	Events.SetPrivateServerName:fire(serverName)
 end
 
 function PrivateMatchController.setGameMode(_, gameMode)
-	Events["69487bdf-63d8-4a61-aef1-eb99b2c84022"]:fire(gameMode)
+	Events.SetPrivateGameMode:fire(gameMode)
 end
 
 function PrivateMatchController.setAllowTeamSelection(_, allowTeamSelection)
-	Events["029a6a32-6361-4bcf-a329-c047192aecaa"]:fire(allowTeamSelection)
+	Events.SetPrivateAllowTeamSelection:fire(allowTeamSelection)
 end
 
 function PrivateMatchController.setPrivacy(_, privacy)
-	Events["2e1b9b77-cd90-4f5a-92ca-d479e5de0dec"]:fire(privacy)
+	Events.SetPrivatePrivacy:fire(privacy)
 end
 
 function PrivateMatchController.setMap(_, map)
-	Events["42e5b069-3ac9-44b2-914a-499f3c5079ed"]:fire(map)
+	Events.SetPrivateMap:fire(map)
 end
 
 function PrivateMatchController.createPrivateServer(_, serverConfig)
-	Events["627338f8-6423-40af-9a5e-bf34ed0cfca0"]:fire(serverConfig)
+	Events.CreatePrivateServer:fire(serverConfig)
 end
 
 function PrivateMatchController.joinPrivateServer(_, joinCode)
-	Events["d092d675-6fdc-4fd8-a82c-2efd67c8cddf"]:fire(joinCode)
+	Events.JoinPrivateServer:fire(joinCode)
 end
 
 function PrivateMatchController.banPlayer(_, player)
-	Events["52b9e38d-3dab-48bf-84da-129d051af061"]:fire(player.UserId, player.DisplayName, true)
+	Events.SetPlayerBan:fire(player.UserId, player.DisplayName, true)
 end
 
 function PrivateMatchController.unbanPlayer(_, player)
-	Events["52b9e38d-3dab-48bf-84da-129d051af061"]:fire(player.UserId, player.DisplayName, false)
+	Events.SetPlayerBan:fire(player.UserId, player.DisplayName, false)
 end
 
 function PrivateMatchController.setPlayerTeam(_, userId, team)
-	Events["c897260e-e7b2-4c31-aafb-15c011643dcd"]:fire(userId, team)
+	Events.SetPlayerTeam:fire(userId, team)
 end
 
 function PrivateMatchController.joinTeam(_, team)
-	Events["c897260e-e7b2-4c31-aafb-15c011643dcd"]:fire(Players.LocalPlayer.UserId, team)
+	Events.SetPlayerTeam:fire(Players.LocalPlayer.UserId, team)
 end
 
 function PrivateMatchController.leaveTeam(_)
-	Events["c897260e-e7b2-4c31-aafb-15c011643dcd"]:fire(Players.LocalPlayer.UserId, nil)
+	Events.SetPlayerTeam:fire(Players.LocalPlayer.UserId, nil)
 end
 
 Reflect.defineMetadata(PrivateMatchController, "identifier", "kXp")

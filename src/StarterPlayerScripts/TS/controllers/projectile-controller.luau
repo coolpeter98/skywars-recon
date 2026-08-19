@@ -125,7 +125,7 @@ function ProjectileController.constructor(
 end
 
 function ProjectileController.onStart(self: ProjectileController)
-	Events["f5d4c279-8cd8-4258-a4ec-63ed93a63116"]:connect(
+	Events.ProjectileFired:connect(
 		function(
 			shooter: Player?,
 			itemName: string,
@@ -139,7 +139,7 @@ function ProjectileController.onStart(self: ProjectileController)
 			self:projectileFired(shooter, itemName, origin, direction, velocity, identifier, bulletTemplate, trailName)
 		end
 	)
-	Events["b4ea3e61-3ddd-4a1e-8ae7-13bb883fc824"]:connect(function(identifier: string, finishSimulation: boolean)
+	Events.ProjectileTerminated:connect(function(identifier: string, finishSimulation: boolean)
 		local activeProjectile = self.activeProjectiles[identifier]
 		if not activeProjectile then
 			return nil
@@ -421,7 +421,7 @@ function ProjectileController.chargeBow(self: ProjectileController, inputObject:
 				["Volume"] = 0.8,
 			})
 		end
-		Events["ff7e66d9-4208-4ce5-bb32-6e2768f5f915"]:fire(direction, strength)
+		Events.FireProjectile:fire(direction, strength)
 	end)
 	self.maid:GiveTask(Flamework.resolveDependency("Dqk").ActiveItemUpdated:bind(function(activeItemUpdate)
 		local heldItemInfo = activeItemUpdate.heldItemInfo

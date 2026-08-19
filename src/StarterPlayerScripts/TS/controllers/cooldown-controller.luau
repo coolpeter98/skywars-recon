@@ -26,7 +26,7 @@ function CooldownController.constructor(self: CooldownController)
 end
 
 function CooldownController.onStart(self: CooldownController)
-	Events["837f63c1-1022-43e2-b749-2695f8ae87d1"]:connect(function(key: string, duration: number?)
+	Events.CooldownUpdated:connect(function(key: string, duration: number?)
 		local cooldowns = GlobalStore:getState().Cooldowns
 		local newCooldowns = {}
 		for _, entry in ObjectUtils.entries(cooldowns) do

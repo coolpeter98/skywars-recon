@@ -248,7 +248,7 @@ return {
 			["Color"] = Color.Button.Green,
 			["Activated"] = function()
 				if canClaimNext then
-					Events["87f22941-955c-4c98-9c35-5deb3ad51cac"]:fire(props.SeasonData.CurrentTierId + 1)
+					Events.ClaimSeasonPassTier:fire(props.SeasonData.CurrentTierId + 1)
 				else
 					SeasonUtil.promptSkipTiers(1)
 				end

@@ -77,7 +77,7 @@ function SpectatorController.constructor(self: SpectatorController)
 	self.spectating = false
 end
 function SpectatorController.onStart(self: SpectatorController)
-	Events["b9b935e9-55ee-43ad-be87-84a7ef56cad9"]:connect(function(target, position, respawnTime)
+	Events.Spectate:connect(function(target, position, respawnTime)
 		self:setSpectating(target, position)
 		self.SetSpectating:fire({
 			["spectating"] = true,
@@ -92,7 +92,7 @@ function SpectatorController.onStart(self: SpectatorController)
 			} or nil,
 		})
 	end)
-	Events["98d1d5c5-45be-4173-9e49-0abd7cd7efb2"]:connect(function()
+	Events.StopSpectating:connect(function()
 		self:stopSpectating()
 	end)
 	Flamework.resolveDependency("rB8").GameEnded:bind(function()
@@ -240,7 +240,7 @@ function SpectatorController.attachCamera(self: SpectatorController, target: Pla
 	end))
 	currentCamera.CameraSubject = humanoid
 	currentCamera.CameraType = Enum.CameraType.Custom
-	Events["365f4042-5ef0-46d4-96f7-154c0ef5f9ec"]:fire(target)
+	Events.SpectateTargetChanged:fire(target)
 	self.spectateTarget = target
 	Flamework.resolveDependency("zG"):setValue("Spectating", {
 		["Name"] = target.DisplayName,

@@ -106,7 +106,7 @@ function CrateController.constructor(self: CrateController)
 end
 
 function CrateController.onStart(self: CrateController)
-	Events["6436eb60-0831-4586-848e-68ac2adfbae7"]:connect(function(animationType, crateRewardResults)
+	Events.CrateOpened:connect(function(animationType, crateRewardResults)
 		self.crateRewardResults = crateRewardResults
 		self:closeLobbyScreen()
 		self:playCrateOpenedAnimation(animationType, self.crateRewardResults)

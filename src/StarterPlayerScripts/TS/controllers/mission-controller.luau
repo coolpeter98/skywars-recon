@@ -56,7 +56,7 @@ end
 function MissionController.constructor(self: MissionController) end
 
 function MissionController.onStart(self: MissionController)
-	Events["169c2a72-ec9b-448c-bc73-5fe585a216d4"]:connect(function(mission: MissionRewardEvent)
+	Events.MissionReward:connect(function(mission: MissionRewardEvent)
 		if mission.Reward.RewardType ~= "Gems" then
 			return nil
 		end

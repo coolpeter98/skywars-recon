@@ -51,7 +51,7 @@ end
 function MetricController.constructor(_) end
 
 function MetricController.onStart(self)
-	Events["c1d4bfd5-10c8-4b2b-9d90-a524b008d19a"]:fire(LocalizationService.RobloxLocaleId, self:getDeviceType())
+	Events.SendMetrics:fire(LocalizationService.RobloxLocaleId, self:getDeviceType())
 end
 
 function MetricController.getDeviceType(self): "MOBILE" | "CONSOLE" | "DESKTOP" | "UNKNOWN"

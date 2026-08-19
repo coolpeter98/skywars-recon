@@ -55,7 +55,7 @@ function ChestController.constructor(self, screenController)
 end
 function ChestController.onStart(self)
 	-- Server notifies us that the opened chest's contents changed.
-	Events["2686e385-ef93-4bdf-8d3f-0a318fefa8cb"]:connect(function(chest, items, shouldOpen)
+	Events.ChestUpdated:connect(function(chest, items, shouldOpen)
 		if self.chest ~= chest then
 			return nil
 		end
@@ -79,20 +79,20 @@ function ChestController.onStart(self)
 end
 function ChestController.openChest(self, chest)
 	self.chest = chest
-	Events["09b88f40-1d56-492e-a1a8-361aa848f96b"](chest)
+	Events.OpenChest(chest)
 end
 function ChestController.updateChest(self, _, slotId, itemType)
 	if not self.chest then
 		return nil
 	end
-	Events["0c591ef1-540e-4db6-8752-2bf060fda5f1"](self.chest, slotId, itemType)
+	Events.TakeChestItem(self.chest, slotId, itemType)
 end
 function ChestController.closeChest(self)
 	if not self.chest then
 		return nil
 	end
 	Flamework.resolveDependency("zG"):setValue("Chest", nil)
-	Events["a0d91e14-5b6f-4353-8977-fefd74b6e398"](self.chest)
+	Events.CloseChest(self.chest)
 	self.chest = nil
 end
 function ChestController.getOpenedChest(self)

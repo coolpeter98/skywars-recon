@@ -65,7 +65,7 @@ function UpdateLogController.addUpdatesToProfile(self, updates: { string }, prof
 		end
 	end
 	if #newUpdates ~= 0 then
-		Events["89ec7696-fd3f-48fa-a247-c317aae566de"]:fire(newUpdates)
+		Events.AcknowledgeUpdateLog:fire(newUpdates)
 	end
 end
 

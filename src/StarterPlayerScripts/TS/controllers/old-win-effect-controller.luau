@@ -33,10 +33,10 @@ function OldWinEffectController.onStart(self: OldWinEffectController)
 	if GameConstants.NEW_WIN_EFFECT_ENABLED then
 		return nil
 	end
-	Events["4d3d3d75-103b-4d38-8ff5-20450dfc40d2"]:connect(function(focus)
+	Events.WinEffectFocus:connect(function(focus)
 		self:startWinEffect(focus)
 	end)
-	Events["0742a9df-6f57-47d8-aa7e-47183406b432"]:connect(function()
+	Events.WinEffectStopped:connect(function()
 		self:stopWinEffect()
 	end)
 end

@@ -94,7 +94,7 @@ end
 function CameraController.onGameStart(self: CameraController, task)
 	self.loadedStoreState = false
 	self:lockCamera()
-	task:GiveTask(Events["570664b1-dc2e-44e1-a0e9-0dd4232eaec7"]:connect(function()
+	task:GiveTask(Events.Respawn:connect(function()
 		local cameraSubject = Workspace.CurrentCamera.CameraSubject
 		if cameraSubject and not cameraSubject:IsDescendantOf(Workspace) then
 			print("Patching camera...")
@@ -105,7 +105,7 @@ function CameraController.onGameStart(self: CameraController, task)
 			Workspace.CurrentCamera.CameraSubject = humanoid
 		end
 	end))
-	task:GiveTask(Events["570664b1-dc2e-44e1-a0e9-0dd4232eaec7"]:connect(function()
+	task:GiveTask(Events.Respawn:connect(function()
 		self:handleInitialFirstPerson(true)
 	end))
 	self:handleInitialFirstPerson(false)
@@ -279,7 +279,7 @@ function CameraController.lockCamera(self: CameraController)
 	local head = character:FindFirstChild("Head")
 	local firstPerson = head.LocalTransparencyModifier == 1
 	if humanoid == cameraSubject and self.loadedStoreState then
-		Events["f5483027-b2fd-46cc-8a19-14a5048ab33f"]:fire(firstPerson)
+		Events.SetFirstPerson:fire(firstPerson)
 	end
 	self:handleCrosshairVisibility(firstPerson)
 	self:enableCrosshair()
@@ -343,7 +343,7 @@ function CameraController.unlockCamera(self: CameraController)
 	local head = character:FindFirstChild("Head")
 	local firstPerson = head.LocalTransparencyModifier == 1
 	if humanoid == cameraSubject and self.loadedStoreState then
-		Events["f5483027-b2fd-46cc-8a19-14a5048ab33f"]:fire(firstPerson)
+		Events.SetFirstPerson:fire(firstPerson)
 	end
 	self:handleCrosshairVisibility(firstPerson)
 	self:enableCrosshair()

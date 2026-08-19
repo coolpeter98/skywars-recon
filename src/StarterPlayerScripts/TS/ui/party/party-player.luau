@@ -278,7 +278,7 @@ local function PartyPlayer(props: PartyPlayerProps)
 				return nil
 			end
 			if props.Player.Status == SocialStatus.InGame then
-				Events["e19fe30a-2ecc-4ac2-901a-8f767a97f8fd"](props.Player.GameId)
+				Events.JoinGame(props.Player.GameId)
 			end
 		end
 		rightButton = createElement(grid, rightClippingProps, createElement(button, rightButtonProps))

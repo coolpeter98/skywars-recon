@@ -84,7 +84,7 @@ function EggController.onStart(self)
 		lastEggCheckTime = os.clock()
 		self:updateNearbyEgg()
 	end)
-	Events["1f8d0466-8b5b-4eaf-a662-1d5a42459023"]:connect(function(egg)
+	Events.DamageDealt:connect(function(egg)
 		local eggId = egg:GetAttribute(Attribute.EggId)
 		if eggId == 0 or (eggId ~= eggId or (eggId == "" or not eggId)) then
 			return nil

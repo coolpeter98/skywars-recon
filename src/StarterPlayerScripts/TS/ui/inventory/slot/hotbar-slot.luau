@@ -51,7 +51,7 @@ return {
 					elseif
 						itemData.Armour and not armourController:getItemInfoFromArmourType(itemData.Armour.ArmourType)
 					then
-						Events["4308b3fa-791a-4f62-ac35-6983a1eb78fa"]:fire(item.Type)
+						Events.EquipItem:fire(item.Type)
 						return
 					elseif inventoryController:isInventoryOpen() then
 						inventoryController:moveItem(item.Type)

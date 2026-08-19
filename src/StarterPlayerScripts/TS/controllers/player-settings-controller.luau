@@ -87,7 +87,7 @@ function PlayerSettingsController.setSetting(
 	if skipNetwork == nil then
 		skipNetwork = false
 	end
-	Events["f2a087e4-0ed4-4abe-ab62-701f2c7a32a3"]:fire(settingId, value)
+	Events.UpdateSetting:fire(settingId, value)
 	self.SettingUpdatedEvent:fire(settingId, value, skipNetwork)
 end
 function PlayerSettingsController.getSetting(_: PlayerSettingsController, settingId: string)

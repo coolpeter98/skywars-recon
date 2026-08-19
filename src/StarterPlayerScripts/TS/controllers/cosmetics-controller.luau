@@ -74,7 +74,7 @@ end
 function CosmeticsController.constructor(self: CosmeticsController) end
 
 function CosmeticsController.enableCosmetic(self: CosmeticsController, cosmeticId: string)
-	Events["9ef2e22a-1792-414c-affd-aaa036086098"]:fire(cosmeticId)
+	Events.EquipCosmetic:fire(cosmeticId)
 end
 
 function CosmeticsController.getActiveCosmetic(

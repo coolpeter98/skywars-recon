@@ -37,10 +37,10 @@ function TeleController.constructor(self: TeleController, screenController: any)
 	self.teleporting = false
 end
 function TeleController.onStart(self: TeleController)
-	Events["9f5c434e-fb42-4611-ac9a-54862ba240e4"]:connect(function()
+	Events.MatchFound:connect(function()
 		self:setupTeleportGui()
 	end)
-	Events["278a3433-e8c3-4e94-b450-290da77f88b5"]:connect(function()
+	Events.TeleportFinished:connect(function()
 		if self.teleporting then
 			Flamework.resolveDependency("jL9"):startSound()
 			self.teleporting = false
@@ -59,7 +59,7 @@ function TeleController.teleportToHub(self: TeleController)
 	if not PartyUtil.isHostingMultiplayerParty(PlayerUtil.toReplicated(Players.LocalPlayer), partyState) then
 		Flamework.resolveDependency("PrB"):leaveParty()
 	end
-	Events["b4c1dd39-7e8d-4484-b4e7-c3bb0475d92c"]:fire()
+	Events.TeleportToHub:fire()
 end
 function TeleController.teleportToHubInstance(self: TeleController, instanceId: string, customLoadingScreen: Instance?)
 	if self.teleporting then
@@ -67,7 +67,7 @@ function TeleController.teleportToHubInstance(self: TeleController, instanceId: 
 	end
 	RuntimeLib.try(function()
 		self:setupTeleportGui()
-		Events["3f765989-4b02-4e6d-b33f-33a90e0a9e63"]:fire()
+		Events.TeleportToHubInstance:fire()
 		TeleportService:TeleportToPlaceInstance(PlaceUtil.getLobbyId(), instanceId, Players.LocalPlayer, nil, customLoadingScreen)
 	end, function(err)
 		print(err)

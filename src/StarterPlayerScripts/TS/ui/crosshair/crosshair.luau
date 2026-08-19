@@ -27,7 +27,7 @@ return {
 			local maid = Maid.new()
 			local shotTimes = {}
 			local lastShotTime = nil
-			maid:GiveTask(Events["1f8d0466-8b5b-4eaf-a662-1d5a42459023"]:connect(function(_, _, _, _, _, player: Player)
+			maid:GiveTask(Events.DamageDealt:connect(function(_, _, _, _, _, player: Player)
 				if player and player == Players.LocalPlayer then
 					local shots = shotTimes
 					local shotTime = os.clock()

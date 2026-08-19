@@ -108,7 +108,7 @@ function PowerUpController.onStart(self: PowerUpController)
 		self:usePowerUp(input)
 	end)
 
-	Events["89cfb44d-69fe-4b33-9ec5-0705238bf400"]:connect(function(powerUp: string, activated: boolean)
+	Events.PowerUpToggled:connect(function(powerUp: string, activated: boolean)
 		local newState = {}
 		for powerUpKey, activatedAt in GlobalStore:getState().PowerUps do
 			newState[powerUpKey] = activatedAt
@@ -233,7 +233,7 @@ function PowerUpController.usePowerUp(self: PowerUpController, input: InputObjec
 			return nil
 		end
 		if animationTrack.TimePosition >= animationTrack.Length * 0.9 and not cancelled then
-			Events["898c1a0b-e9e1-46eb-9b1f-98be1ba53f76"]:fire()
+			Events.ActivatePowerUp:fire()
 		end
 	end))
 end

@@ -100,7 +100,7 @@ function KillEffectController.constructor(self: KillEffectController, cosmeticDe
 	})
 end
 function KillEffectController.onStart(self: KillEffectController)
-	Events["e63fadb7-a448-4731-a322-7a03e0fddc7d"]:connect(function(character, cosmeticId, killer)
+	Events.KillEffect:connect(function(character, cosmeticId, killer)
 		local humanoid = Instance.new("Humanoid")
 		humanoid.HipHeight = 2.192423105239868
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None

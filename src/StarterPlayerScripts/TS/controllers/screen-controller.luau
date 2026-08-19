@@ -65,10 +65,10 @@ function ScreenController.onStart(self: ScreenController)
 	Flamework.resolveDependency("rB8").GameEnded:bind(function()
 		self:handleDeath()
 	end)
-	Events["b9b935e9-55ee-43ad-be87-84a7ef56cad9"]:connect(function()
+	Events.Spectate:connect(function()
 		self:handleDeath()
 	end)
-	Events["d7ee8722-a04c-4d29-a954-e324fb1fff79"]:connect(function(player)
+	Events.PlayerEliminated:connect(function(player)
 		if Players.LocalPlayer == player then
 			self:handleDeath()
 		end

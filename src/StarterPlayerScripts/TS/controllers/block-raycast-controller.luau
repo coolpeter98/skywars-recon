@@ -101,10 +101,10 @@ function BlockRaycastController.onStart(self: BlockRaycastController)
 		end
 		self:onTick(0)
 	end)
-	Events["641eae80-2d1b-4ca0-975e-3e74d5982bf5"]:connect(function(blockPosition: Vector3)
+	Events.BlockRemoved:connect(function(blockPosition: Vector3)
 		self:handleBlockEvent(blockPosition)
 	end)
-	Events["8b0a880a-d0e4-4092-a805-613c706993c2"]:connect(function(blockPosition: Vector3)
+	Events.BlockBreakStatusCleared:connect(function(blockPosition: Vector3)
 		self:handleBlockEvent(blockPosition)
 	end)
 end

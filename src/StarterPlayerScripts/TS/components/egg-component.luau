@@ -118,7 +118,7 @@ function EggComponent.onStart(self)
 	local marker = Flamework.resolveDependency("04V")
 		:addKeypoint(self.instance:GetPivot().Position + Vector3.new(0, 12, 0), markerSetup)
 
-	self.maid:GiveTask(Events["e81ad96c-f3a4-4d32-8e0c-1fab6c11d1c7"]:connect(function(eliminatedTeamId)
+	self.maid:GiveTask(Events.EggEliminated:connect(function(eliminatedTeamId)
 		if teamId == eliminatedTeamId then
 			markerSetup.Image = eggCharacter.IconDeadId
 		end

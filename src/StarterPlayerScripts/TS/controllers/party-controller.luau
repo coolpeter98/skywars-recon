@@ -68,7 +68,7 @@ function PartyController.constructor(self: PartyController, screenController, no
 end
 
 function PartyController.onStart(self: PartyController)
-	Events["da9e0627-ff7e-44a2-9453-e021c0a66f5e"]:connect(
+	Events.PartyInvite:connect(
 		function(inviteId: string, inviter: { UserId: number, UserName: string, DisplayName: string }, partyId: string)
 			local notification = {
 				["Title"] = inviter.DisplayName,
@@ -91,13 +91,13 @@ function PartyController.onStart(self: PartyController)
 			self.notifications[inviteId] = notificationHandle
 		end
 	)
-	Events["5fda8a54-5037-4f1d-9ef2-acb34fdd9436"]:connect(function(inviteId: string)
+	Events.PartyInviteCancelled:connect(function(inviteId: string)
 		local notificationHandle = self.notifications[inviteId]
 		if notificationHandle then
 			notificationHandle:close()
 		end
 	end)
-	Events["efa2719a-e49f-4888-880d-0dca2867b15f"]:connect(function(party)
+	Events.PartyUpdated:connect(function(party)
 		local resolvedParty = party or DefaultProfileStore.Party
 		Flamework.resolveDependency("zG"):setValue("Party", resolvedParty)
 	end)
@@ -108,23 +108,23 @@ function PartyController.invitePlayer(_, player, isOffline: boolean)
 	if party and PartyUtil.isFull(party, false) then
 		return nil
 	end
-	Events["b009a190-bad1-4d71-94b8-7abe293c288b"]:fire(player, isOffline)
+	Events.InvitePlayerToParty:fire(player, isOffline)
 end
 
 function PartyController.promotePlayer(_, player)
-	Events["bd31d08b-ed18-4fe4-ba9b-7934596b1762"]:fire(player)
+	Events.PartyPromote:fire(player)
 end
 
 function PartyController.removePlayer(_, userId: number)
-	Events["dba33424-1c8c-4452-a91b-ac0c1859483b"]:fire(userId)
+	Events.PartyRemove:fire(userId)
 end
 
 function PartyController.leaveParty(_)
-	Events["cf44187c-9cc4-4e1e-8c0f-bb5475aa5489"]:fire()
+	Events.PartyLeave:fire()
 end
 
 function PartyController.updateInvite(_, inviteId: string, partyId: string, accepted: boolean)
-	Events["4315d525-6b6f-467e-9b0d-f7c72ab200a4"]:fire(inviteId, partyId, accepted)
+	Events.PartyInviteResponse:fire(inviteId, partyId, accepted)
 end
 
 function PartyController.toggleScreen(self)

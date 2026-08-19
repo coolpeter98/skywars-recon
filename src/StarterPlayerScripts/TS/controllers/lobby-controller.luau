@@ -63,14 +63,14 @@ function LobbyController.onGameStart(self: LobbyController, maid)
 			["InLobby"] = false
 		})
 	end
-	maid:GiveTask(Events["b9b935e9-55ee-43ad-be87-84a7ef56cad9"]:connect(function()
+	maid:GiveTask(Events.Spectate:connect(function()
 		if not (self.screenController:isHealthBarDisabled() and ScreenUtil.isMobile()) then
 			self.screenController:open(LobbyScreen, {
 				["InLobby"] = false
 			})
 		end
 	end))
-	maid:GiveTask(Events["98d1d5c5-45be-4173-9e49-0abd7cd7efb2"]:connect(function()
+	maid:GiveTask(Events.StopSpectating:connect(function()
 		if Players.LocalPlayer:GetAttribute(Attribute.Alive) == true and not (self.screenController:isHealthBarDisabled() and ScreenUtil.isMobile()) then
 			self.screenController:close(LobbyScreen)
 		end

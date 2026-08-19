@@ -55,7 +55,7 @@ function BlockController.constructor(self: BlockController, hotbarController: an
 end
 
 function BlockController.onStart(self: BlockController)
-	Events["641eae80-2d1b-4ca0-975e-3e74d5982bf5"]:connect(function(position: Vector3)
+	Events.BlockRemoved:connect(function(position: Vector3)
 		local predictedBlock = self.predictedBlocks[position]
 		if not predictedBlock then
 			return nil
@@ -63,14 +63,14 @@ function BlockController.onStart(self: BlockController)
 		self.predictedBlocks[position] = nil
 		predictedBlock:Destroy()
 	end)
-	Events["8b0a880a-d0e4-4092-a805-613c706993c2"]:connect(function(position: Vector3)
+	Events.BlockBreakStatusCleared:connect(function(position: Vector3)
 		local block = self.breakStatusBlocks[position]
 		if block then
 			block:Destroy()
 		end
 		self.breakStatusBlocks[position] = nil
 	end)
-	Events["cf61aecd-45ad-4dbf-9684-855298e63fc1"]:connect(function(position: Vector3, progress: number)
+	Events.BlockBreakProgress:connect(function(position: Vector3, progress: number)
 		local block = self.breakStatusBlocks[position]
 		if block and progress == 0 then
 			block:Destroy()
@@ -226,11 +226,11 @@ function BlockController.placeBlock(self: BlockController, position: Vector3, it
 	if predictionId == "" or not predictionId then
 		return nil
 	end
-	Events["d1e851ff-6009-40cb-a269-81d3c8a1bd02"](position, rotation, predictionId)
+	Events.PlaceBlock(position, rotation, predictionId)
 end
 
 function BlockController.hitBlock(_, position: Vector3)
-	Events["96810227-620b-436c-9e17-8f62e895b30c"]:fire(position)
+	Events.HitBlock:fire(position)
 end
 
 Reflect.defineMetadata(BlockController, "identifier", "NaX")

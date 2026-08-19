@@ -77,7 +77,7 @@ end
 function AnimationController.constructor(_) end
 
 function AnimationController.onStart(_)
-	Events["3670fe8e-dc2d-4c11-be18-421c83b38745"]:connect(function(character: Model)
+	Events.PowerUpEffect:connect(function(character: Model)
 		PowerUpEffect.new(character):start()
 	end)
 end

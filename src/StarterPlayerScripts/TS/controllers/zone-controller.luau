@@ -59,7 +59,7 @@ end
 function ZoneController.constructor(_) end
 
 function ZoneController.onStart(_: ZoneController)
-	Events["e88d40f9-258d-4c98-b45c-42562f7cd881"]:connect(function(zoneId: string, duration: number)
+	Events.ZoneUpdated:connect(function(zoneId: string, duration: number)
 		local startTime: number = os.time()
 		local endTime: number = startTime + duration
 		local zones: { [string]: Zone } = GlobalStore:getState().Zones

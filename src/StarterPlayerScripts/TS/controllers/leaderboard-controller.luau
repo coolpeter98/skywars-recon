@@ -60,7 +60,7 @@ end
 function LeaderboardController.constructor(_) end
 
 function LeaderboardController.onStart(_)
-	Events["e6dfa573-8fbd-41bb-ad88-ec9b831bb8c5"]:connect(
+	Events.LeaderboardUpdated:connect(
 		function(leaderboardKey: string, leaderboardEntries: { LeaderboardEntry }, receiveTime: number)
 			local stats: { LeaderboardEntry & { DisplayName: string } } = {}
 			RuntimeLib.try(function()
@@ -112,7 +112,7 @@ function LeaderboardController.pollLeaderboard(
 	if friendIds == nil then
 		friendIds = nil
 	end
-	Events["8cac52e9-4b81-4d57-976d-08c4649b1a74"]:fire(leaderboardType, statId, statGranularity, friendIds)
+	Events.RequestLeaderboard:fire(leaderboardType, statId, statGranularity, friendIds)
 end
 
 Reflect.defineMetadata(LeaderboardController, "identifier", "xBL")

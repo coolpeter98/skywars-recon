@@ -82,7 +82,7 @@ function HotbarController.onGameStart(self: HotbarController, maid)
 		end
 	end))
 	if GameConstants.POST_GAME_LOBBY_ENABLED then
-		maid:GiveTask(Events["d7ee8722-a04c-4d29-a954-e324fb1fff79"]:connect(function(player)
+		maid:GiveTask(Events.PlayerEliminated:connect(function(player)
 			if Players.LocalPlayer == player then
 				maid:DoCleaning()
 			end
@@ -174,7 +174,7 @@ function HotbarController.setupHotbar(self: HotbarController, maid)
 		if not self:getHeldItemInfo() then
 			return nil
 		end
-		Events["eae4f63f-8569-4707-a51e-640de113ef22"]:fire()
+		Events.UseHeldItem:fire()
 	end))
 	task.spawn(function()
 		AwaitPlayerRoot()
@@ -277,7 +277,7 @@ function HotbarController.updateActiveItem(self: HotbarController, silent: boole
 	self.lastHeldItem = heldItem
 	self.lastActiveSlot = activeSlot
 	if not silent then
-		Events["85b98758-d2ac-4e4a-9905-70d3310a1d9e"]:fire(prevHeldItemName)
+		Events.HeldItemChanged:fire(prevHeldItemName)
 	end
 	return heldItem
 end

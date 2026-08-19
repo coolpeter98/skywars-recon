@@ -198,7 +198,7 @@ function MeleeController.strikeMobile(_)
 		end
 	end
 	if #targets == 0 then
-		Events["bf26abfd-c509-43b4-9b49-5ae3a5521cd4"]:fire(nil)
+		Events.MeleeStrike:fire(nil)
 		return nil
 	end
 	table.sort(targets, function(left, right)
@@ -212,14 +212,14 @@ function MeleeController.strikeMobile(_)
 		local raycastParams = QueryUtil.getCombatRaycastParams(CombatRaycastType.MELEE, nil, true, false, false)
 		if player then
 			if RaycastUtil.isCharacterVisible(target, raycastParams) then
-				Events["bf26abfd-c509-43b4-9b49-5ae3a5521cd4"]:fire(player)
+				Events.MeleeStrike:fire(player)
 			end
 		elseif RaycastUtil.isModelVisible(target, raycastParams) then
-			Events["ccbf1e6a-d343-4e2b-9bd2-b824fd4c2b8b"]:fire(target)
+			Events.MeleeStrikeEntity:fire(target)
 		end
 		return nil
 	end
-	Events["bf26abfd-c509-43b4-9b49-5ae3a5521cd4"]:fire(nil)
+	Events.MeleeStrike:fire(nil)
 end
 
 function MeleeController.strikeDesktop(self: MeleeController, mouseLocation: Vector2)
@@ -243,7 +243,7 @@ function MeleeController.strikeDesktop(self: MeleeController, mouseLocation: Vec
 	self:manageShimBlocks(false)
 	if not raycastResult then
 		self.maid:DoCleaning()
-		Events["bf26abfd-c509-43b4-9b49-5ae3a5521cd4"]:fire(nil)
+		Events.MeleeStrike:fire(nil)
 		return nil
 	end
 	self:attemptStrikeDesktop(raycastResult.Instance)
@@ -270,22 +270,22 @@ function MeleeController.attemptStrikeDesktop(self: MeleeController, part: BaseP
 				distance == 0
 				or (distance ~= distance or (not distance or MeleeConstants.MAXIMUM_HIT_RANGE_BLOCKS * 3 < distance))
 			then
-				Events["bf26abfd-c509-43b4-9b49-5ae3a5521cd4"]:fire(nil)
+				Events.MeleeStrike:fire(nil)
 				return false
 			else
 				if player then
-					Events["bf26abfd-c509-43b4-9b49-5ae3a5521cd4"]:fire(player)
+					Events.MeleeStrike:fire(player)
 				else
-					Events["ccbf1e6a-d343-4e2b-9bd2-b824fd4c2b8b"]:fire(model)
+					Events.MeleeStrikeEntity:fire(model)
 				end
 				return true
 			end
 		else
-			Events["bf26abfd-c509-43b4-9b49-5ae3a5521cd4"]:fire(nil)
+			Events.MeleeStrike:fire(nil)
 			return false
 		end
 	else
-		Events["bf26abfd-c509-43b4-9b49-5ae3a5521cd4"]:fire(nil)
+		Events.MeleeStrike:fire(nil)
 		return false
 	end
 end

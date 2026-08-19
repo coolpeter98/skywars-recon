@@ -62,7 +62,7 @@ function NotificationController.constructor(self: NotificationController)
 end
 
 function NotificationController.onStart(self: NotificationController)
-	Events["f18ee8d7-1911-45e5-a23f-fe005dc1eaf0"]:connect(function(notification)
+	Events.Notification:connect(function(notification)
 		self:displayNotification(notification)
 	end)
 end

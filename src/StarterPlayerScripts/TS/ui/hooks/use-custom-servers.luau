@@ -16,7 +16,7 @@ return {
 			task.spawn(function()
 				while not stopped do
 					print("Updating custom server list...")
-					local newServers = Functions["a8ed47d9-a359-40b4-840b-47fed6373b94"]():expect()
+					local newServers = Functions.GetCustomServers():expect()
 					if stopped then
 						break
 					end

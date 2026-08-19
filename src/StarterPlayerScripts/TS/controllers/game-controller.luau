@@ -96,10 +96,10 @@ function GameController.constructor(self: GameController, screenController: any)
 end
 
 function GameController.onStart(self: GameController)
-	Events["6b80b67b-dd78-492a-864a-76fbabf73c2e"]:connect(function(killedPlayer, killerPlayer, damageType)
+	Events.PlayerKilled:connect(function(killedPlayer, killerPlayer, damageType)
 		self:createKillFeedCard(killedPlayer, killerPlayer, damageType)
 	end)
-	Events["e81ad96c-f3a4-4d32-8e0c-1fab6c11d1c7"]:connect(function(eggName, player)
+	Events.EggEliminated:connect(function(eggName, player)
 		if not player then
 			return nil
 		end
@@ -127,17 +127,17 @@ function GameController.onStart(self: GameController)
 		killfeedData.DamageType = DamageType.Melee
 		screenController:open(KillfeedScreen, killfeedData)
 	end)
-	Events["909525d9-f05b-422c-aec2-bc5caf93fea2"]:connect(function(gameResult)
+	Events.GameResult:connect(function(gameResult)
 		self.GameEnded:fire({
 			["GameResult"] = gameResult,
 		})
 	end)
-	Events["570664b1-dc2e-44e1-a0e9-0dd4232eaec7"]:connect(function()
+	Events.Respawn:connect(function()
 		if not Flamework.resolveDependency("Jj"):isInLobby() then
 			self.screenController:close(EndGameScreen)
 		end
 	end)
-	Events["d7ee8722-a04c-4d29-a954-e324fb1fff79"]:connect(function(player)
+	Events.PlayerEliminated:connect(function(player)
 		local gameTeams = table.clone(GlobalStore:getState().GameTeams)
 		local playerTeam = gameTeams[player:GetAttribute(Attribute.TeamId)]
 		playerTeam.AliveCount = playerTeam.AliveCount - 1
@@ -168,7 +168,7 @@ function GameController.onGameStart(self: GameController, maid)
 	maid:GiveTask(Flamework.resolveDependency("rB8").GameEnded:bind(function()
 		self:closeScoreboard()
 	end))
-	local stateChangeConnection = Events["d71a18fb-dd64-4ccb-a2f7-c955db1dc09c"]:connect(function(duration)
+	local stateChangeConnection = Events.GameStateChangeTime:connect(function(duration)
 		GlobalStore:dispatch({
 			["type"] = "SetValue",
 			["Key"] = "GameStateChangeTime",

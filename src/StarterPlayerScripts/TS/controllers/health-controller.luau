@@ -110,7 +110,7 @@ function HealthController.constructor(self, screenController)
 end
 
 function HealthController.onStart(self)
-	Events["1f8d0466-8b5b-4eaf-a662-1d5a42459023"]:connect(function(character, damage, _, damageType, shield, killer)
+	Events.DamageDealt:connect(function(character, damage, _, damageType, shield, killer)
 		local isLocalPlayerKiller
 		if killer == nil then
 			isLocalPlayerKiller = false
@@ -161,7 +161,7 @@ function HealthController.onGameStart(self, maid)
 			["shield"] = self:getShield(),
 		})
 	end))
-	maid:GiveTask(Events["6b80b67b-dd78-492a-864a-76fbabf73c2e"]:connect(function(_, killer, _, _)
+	maid:GiveTask(Events.PlayerKilled:connect(function(_, killer, _, _)
 		if killer and killer == Players.LocalPlayer then
 			local soundController = Flamework.resolveDependency("jL9")
 			soundController:playSound(KILL_SOUNDS[math.min(self.kills, #KILL_SOUNDS - 1) + 1], {
@@ -176,7 +176,7 @@ function HealthController.onGameStart(self, maid)
 		end
 	end))
 	if GameConstants.POST_GAME_LOBBY_ENABLED then
-		maid:GiveTask(Events["d7ee8722-a04c-4d29-a954-e324fb1fff79"]:connect(function(player)
+		maid:GiveTask(Events.PlayerEliminated:connect(function(player)
 			if Players.LocalPlayer == player then
 				maid:DoCleaning()
 			end

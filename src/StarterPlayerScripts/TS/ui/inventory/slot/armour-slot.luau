@@ -23,7 +23,7 @@ return {
 			if not item then
 				return nil
 			end
-			Events["5b2f659e-3d54-4d54-b57a-0a4f043d196b"]:fire(item.Type)
+			Events.EquipArmour:fire(item.Type)
 		end
 
 		return React.createElement(ItemSlot, newProps)

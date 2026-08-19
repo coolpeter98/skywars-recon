@@ -21,7 +21,7 @@ end
 function LoginStreakController.constructor(self: LoginStreakController)
 end
 function LoginStreakController.onStart(self: LoginStreakController)
-	Events["180fe66b-221f-432f-aa14-5c135cb1255f"]:fire(self:convertTzStringToOffset(os.date("%z")))
+	Events.LoginStreak:fire(self:convertTzStringToOffset(os.date("%z")))
 end
 function LoginStreakController.convertTzStringToOffset(self: LoginStreakController, tzString: string): number
 	local sign = string.sub(tzString, 1, 1) == "-" and -1 or 1

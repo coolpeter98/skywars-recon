@@ -98,7 +98,7 @@ function MatchmakingController.constructor(_) end
 
 function MatchmakingController.onStart(self)
 	Flamework.resolveDependency("lB5"):open(MatchmakingScreen, {})
-	Events["ae0850b0-3bd0-425e-81f9-6596cc0e07dd"]:connect(function(queueStarted)
+	Events.QueueStarted:connect(function(queueStarted)
 		if queueStarted then
 			Flamework.resolveDependency("jL9"):playSound(RobloxSound.Matchmaking.START)
 			Flamework.resolveDependency("zG"):updateQueue(os.time(), true)
@@ -127,7 +127,7 @@ function MatchmakingController.onStart(self)
 			end
 		end)
 	end
-	Events["9f5c434e-fb42-4611-ac9a-54862ba240e4"]:connect(function(matchFound)
+	Events.MatchFound:connect(function(matchFound)
 		if matchFound then
 			Flamework.resolveDependency("jL9"):playSound(RobloxSound.Matchmaking.SUCCESSFUL, {
 				["SoundGroup"] = SoundGroupType.Ui,
@@ -147,10 +147,10 @@ function MatchmakingController.onStart(self)
 	if not PlaceUtil.isGameServer() then
 		return nil
 	end
-	Events["9a400992-3100-43ed-a02f-eb79f17bdd59"]:connect(function()
+	Events.GameStarted:connect(function()
 		self:joinQueueIn(6)
 	end)
-	Events["771c4840-8c4d-44dd-80fc-192c72e9b8a1"]:connect(function(players)
+	Events.PlayersPresent:connect(function(players)
 		local party = GlobalStore:getState().Party
 		local localPlayer: Player = Players.LocalPlayer
 		local shouldRequeue: boolean = table.find(players, localPlayer) ~= nil
@@ -182,7 +182,7 @@ function MatchmakingController.onStart(self)
 			end
 		end)
 	else
-		Events["909525d9-f05b-422c-aec2-bc5caf93fea2"]:connect(function()
+		Events.GameResult:connect(function()
 			if Flamework.resolveDependency("7xl"):getSetting("AutoQueue") and not self:inTest() then
 				self:joinQueueIn(6)
 			end
@@ -240,7 +240,7 @@ function MatchmakingController.joinQueue(self, gameMode)
 	end
 	local queueGameMode = gameMode or PlaceUtil.getGameMode() or eggWarsQuads
 	print("Sending packet to join queue...")
-	Events["e83ed51a-a6d6-4326-bc3f-c7add422229b"]:fire(true, queueGameMode)
+	Events.JoinQueue:fire(true, queueGameMode)
 end
 
 function MatchmakingController.tryLeaveQueue(self)
@@ -259,7 +259,7 @@ function MatchmakingController.leaveQueue(_)
 		shouldLeaveQueue = os.time() - queueStartTime >= 0
 	end
 	if shouldLeaveQueue then
-		Events["e83ed51a-a6d6-4326-bc3f-c7add422229b"]:fire(false)
+		Events.JoinQueue:fire(false)
 	elseif queueStartTime ~= nil then
 		Flamework.resolveDependency("jL9"):playSound(RobloxSound.Matchmaking.CANCEL)
 		Flamework.resolveDependency("zG"):updateQueue(nil, false)

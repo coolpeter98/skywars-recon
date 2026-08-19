@@ -107,7 +107,7 @@ end
 function ScavengerPropComponent.createProximityPrompt(self: ScavengerPropComponent)
 	local prompt = ProximityUtil.createTriggeredPrompt("Scavenger Hunt", "Find", function()
 		if self.propId ~= nil then
-			Events["2bbb5151-7d06-4627-89bc-4199a509c440"]:fire(self.propId)
+			Events.ClaimScavengerProp:fire(self.propId)
 		end
 	end)
 	prompt.RequiresLineOfSight = true

@@ -87,7 +87,7 @@ function EndScreenController.onStart(self)
 		end
 	end)
 	if not GameConstants.NEW_WIN_EFFECT_ENABLED then
-		Events["6b80b67b-dd78-492a-864a-76fbabf73c2e"]:connect(function(player)
+		Events.PlayerKilled:connect(function(player)
 			if Players.LocalPlayer ~= player then
 				return nil
 			end

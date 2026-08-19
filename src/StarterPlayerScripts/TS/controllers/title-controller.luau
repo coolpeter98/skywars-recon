@@ -54,7 +54,7 @@ function TitleController.new(...)
 end
 function TitleController.constructor(_) end
 function TitleController.onStart(self: TitleController)
-	Events["ceed3a3e-6157-4bdc-9ee6-10a9910c3b5d"]:connect(function(title)
+	Events.Title:connect(function(title)
 		self:sendTitle(title)
 	end)
 end

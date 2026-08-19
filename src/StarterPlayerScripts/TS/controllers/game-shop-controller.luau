@@ -32,13 +32,13 @@ function GameShopController.constructor(self, inventoryController)
 	self.inventoryController = inventoryController
 end
 function GameShopController.purchaseItem(_, shopType, itemIndex)
-	Events["0bf178ae-22d0-443e-90e4-25e0d956512c"]:fire(shopType, itemIndex)
+	Events.ShopPurchaseItem:fire(shopType, itemIndex)
 end
 function GameShopController.purchaseItemUpgrade(_, shopType, itemIndex)
-	Events["35e3ef61-d78a-4e76-a51f-793f9dc15dba"]:fire(shopType, itemIndex)
+	Events.ShopPurchaseUpgrade:fire(shopType, itemIndex)
 end
 function GameShopController.purchaseTeamUpgrade(_, shopType, itemIndex)
-	Events["3432863a-8ff0-430a-9c06-3b64b91de17b"]:fire(shopType, itemIndex)
+	Events.ShopPurchaseTeamUpgrade:fire(shopType, itemIndex)
 end
 function GameShopController.getNextUpgradeableItem(self, shopItem)
 	local foundIndex = -1

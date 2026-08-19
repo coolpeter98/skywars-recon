@@ -160,7 +160,7 @@ return {
 						Size = UDim2.fromOffset(200, 80),
 						BackgroundColor3 = Color3.fromRGB(50, 160, 255),
 						Activated = function()
-							return Events["304ec336-2a00-4e02-95e7-d5c7661c5206"]:fire()
+							return Events.RequestSpectate:fire()
 						end,
 						Visible = not focused,
 					},

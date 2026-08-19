@@ -122,7 +122,7 @@ function WinEffectController.onStart(self: WinEffectController)
 			self:startWinEffect(result.GameResult)
 		end
 	end)
-	Events["0742a9df-6f57-47d8-aa7e-47183406b432"]:connect(function()
+	Events.WinEffectStopped:connect(function()
 		self:stopWinEffect()
 	end)
 end

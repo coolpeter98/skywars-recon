@@ -70,7 +70,7 @@ end
 function ReportController.submitReport(self, player)
 	local reportedPlayers = self.reportedPlayers
 	table.insert(reportedPlayers, player)
-	Events["a43ccf92-d35c-44f2-babf-2276399766af"]:fire(player)
+	Events.ReportPlayer:fire(player)
 end
 
 function ReportController.hasReported(self, player)

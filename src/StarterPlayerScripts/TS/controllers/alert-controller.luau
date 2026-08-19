@@ -60,7 +60,7 @@ function AlertController.constructor(self: AlertController)
 end
 
 function AlertController.onStart(self: AlertController)
-	Events["c2781cee-e34c-4c42-bd09-193723dc6473"]:connect(
+	Events.Alert:connect(
 		function(icon: string, text: string, color: Color3, duration: number)
 			self:displayAlert(icon, text, color, duration)
 		end
