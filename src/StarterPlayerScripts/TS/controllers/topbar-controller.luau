@@ -53,19 +53,9 @@ local RunService: RunService = RuntimeLib.import(
 	"@rbxts",
 	"services"
 ).RunService
-local Players: Players = RuntimeLib.import(
-	script,
-	game:GetService("ReplicatedStorage"),
-	"rbxts_include",
-	"node_modules",
-	"@rbxts",
-	"services"
-).Players
-
 type TopbarController = {
 	icons: { any },
 	primaryIcon: any?,
-	studioOffsetQueued: boolean,
 }
 
 local TopbarController = setmetatable({}, {
@@ -83,7 +73,6 @@ end
 function TopbarController.constructor(self: TopbarController)
 	self.icons = {}
 	self.primaryIcon = nil
-	self.studioOffsetQueued = false
 end
 
 function TopbarController.onStart(self: TopbarController)
@@ -118,28 +107,6 @@ function TopbarController.registerTopbarToggle(
 		:autoDeselect(false)
 	icon:align(alignRight and "Right" or "Left")
 	icon:setImageScale(scale)
-	if RunService:IsStudio() and not self.studioOffsetQueued then
-		self.studioOffsetQueued = true
-		-- Studio does not apply the Roblox topbar inset to ScreenGuis, so
-		-- TopbarPlus positions icons above the viewport. Nudge its holder
-		-- frames back into view once for local testing only. Multiple icons
-		-- share these holders, so applying the offset per icon moves the
-		-- entire topbar too far down. Published places are unaffected.
-		task.defer(function()
-			local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-			for _, guiName in { "TopbarStandard", "TopbarStandardClipped", "TopbarCentered", "TopbarCenteredClipped" } do
-				local gui = playerGui:FindFirstChild(guiName)
-				local holders = gui and gui:FindFirstChild("Holders")
-				if holders then
-					for _, scrollingFrame in holders:GetChildren() do
-						if scrollingFrame:IsA("ScrollingFrame") then
-							scrollingFrame.Position += UDim2.fromOffset(0, GuiService.TopbarInset.Height)
-						end
-					end
-				end
-			end
-		end)
-	end
 	icon.selected:Connect(function()
 		onToggle(icon, true)
 	end)
