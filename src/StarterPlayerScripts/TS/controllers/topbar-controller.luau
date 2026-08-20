@@ -1,28 +1,77 @@
 -- TopbarController
 
-local RuntimeLib = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
-local FlameworkCore = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@flamework", "core", "out")
+local RuntimeLib =
+	require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local FlameworkCore = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@flamework",
+	"core",
+	"out"
+)
 local Reflect = FlameworkCore.Reflect
 local Flamework = FlameworkCore.Flamework
-local Controller = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@flamework", "core", "out").Controller
-local TopbarPlus = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "topbar-plus", "out")
-local RobloxImage = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "asset", "roblox", "roblox-image").RobloxImage
+local Controller = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@flamework",
+	"core",
+	"out"
+).Controller
+local TopbarPlus = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@rbxts",
+	"topbar-plus",
+	"out"
+)
+local RobloxImage =
+	RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "asset", "roblox", "roblox-image").RobloxImage
 local ScreenUtil = RuntimeLib.import(script, script.Parent.Parent, "ui", "util", "screen-util").ScreenUtil
 local PlaceUtil = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "place", "place-util").PlaceUtil
-local SettingsScreen = RuntimeLib.import(script, script.Parent.Parent, "ui", "settings", "settings-screen").SettingsScreen
-local GuiService: GuiService = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services").GuiService
-local RunService: RunService = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services").RunService
-local Players: Players = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services").Players
+local SettingsScreen =
+	RuntimeLib.import(script, script.Parent.Parent, "ui", "settings", "settings-screen").SettingsScreen
+local GuiService: GuiService = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@rbxts",
+	"services"
+).GuiService
+local RunService: RunService = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@rbxts",
+	"services"
+).RunService
+local Players: Players = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@rbxts",
+	"services"
+).Players
 
 type TopbarController = {
 	icons: { any },
 	primaryIcon: any?,
+	studioOffsetQueued: boolean,
 }
 
 local TopbarController = setmetatable({}, {
 	["__tostring"] = function()
 		return "TopbarController"
-	end
+	end,
 })
 TopbarController.__index = TopbarController
 
@@ -34,6 +83,7 @@ end
 function TopbarController.constructor(self: TopbarController)
 	self.icons = {}
 	self.primaryIcon = nil
+	self.studioOffsetQueued = false
 end
 
 function TopbarController.onStart(self: TopbarController)
@@ -52,16 +102,29 @@ function TopbarController.onStart(self: TopbarController)
 	end, 0.8)
 end
 
-function TopbarController.registerTopbarToggle(self: TopbarController, deselectedImage, selectedImage, alignRight, onToggle, imageScale)
+function TopbarController.registerTopbarToggle(
+	self: TopbarController,
+	deselectedImage,
+	selectedImage,
+	alignRight,
+	onToggle,
+	imageScale
+)
 	local scale = imageScale == nil and 1 or imageScale
-	local icon = TopbarPlus.Icon.new():setImage(deselectedImage, "Deselected"):setImage(selectedImage, "Selected"):autoDeselect(false)
+	local icon = TopbarPlus.Icon
+		.new()
+		:setImage(deselectedImage, "Deselected")
+		:setImage(selectedImage, "Selected")
+		:autoDeselect(false)
 	icon:align(alignRight and "Right" or "Left")
 	icon:setImageScale(scale)
-	if RunService:IsStudio() then
+	if RunService:IsStudio() and not self.studioOffsetQueued then
+		self.studioOffsetQueued = true
 		-- Studio does not apply the Roblox topbar inset to ScreenGuis, so
 		-- TopbarPlus positions icons above the viewport. Nudge its holder
-		-- frames back into view for local testing only; published places
-		-- are unaffected.
+		-- frames back into view once for local testing only. Multiple icons
+		-- share these holders, so applying the offset per icon moves the
+		-- entire topbar too far down. Published places are unaffected.
 		task.defer(function()
 			local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 			for _, guiName in { "TopbarStandard", "TopbarStandardClipped", "TopbarCentered", "TopbarCenteredClipped" } do
@@ -143,5 +206,5 @@ Reflect.defineMetadata(TopbarController, "identifier", "xWL")
 Reflect.defineMetadata(TopbarController, "flamework:implements", { "$:flamework@OnStart" })
 Reflect.decorate(TopbarController, "$:flamework@Controller", Controller, {})
 return {
-	["TopbarController"] = TopbarController
+	["TopbarController"] = TopbarController,
 }
