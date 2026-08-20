@@ -27,17 +27,32 @@ local EggCharacters: { [string]: EggCharacterData } = RuntimeLib.import(
 local EggCharacterUtil = {}
 local styleEggPart: ((eggModel: Model, slotName: string, targetPartName: string, part: BasePart, isTool: boolean) -> nil?)? = nil
 
-function EggCharacterUtil.createEggModel(colorName: string): Model
-	local eggModel: Model = ReplicatedStorage.Misc:FindFirstChild("Egg"):Clone()
+function EggCharacterUtil.createEggModel(colorName: string): Model?
+	-- The egg/hog content lives in ReplicatedStorage.Misc (egg model
+	-- blobs); in an unpublished Studio place those assets are missing, so
+	-- guard every step instead of erroring during Flamework preload.
+	local eggTemplate = ReplicatedStorage.Misc:FindFirstChild("Egg")
+	if eggTemplate == nil then
+		return nil
+	end
+	local eggModel: Model = eggTemplate:Clone()
 	local eggData: EggCharacterData = EggCharacters[colorName]
 	if eggData == nil then
 		eggData = EggCharacters.Red
 	end
-	local hatModel = ReplicatedStorage.Misc.EggMisc:FindFirstChild(eggData.HatType)
-	local toolModel = ReplicatedStorage.Misc.EggMisc:FindFirstChild(eggData.ToolType)
-	styleEggPart(eggModel, "HAT", "Hat", hatModel:Clone(), false)
-	styleEggPart(eggModel, "TOOL ", "Tool", toolModel:Clone(), true)
-	eggModel:FindFirstChild("EGGSHELL").TextureID = eggData.ColorId
+	local eggMisc = ReplicatedStorage.Misc:FindFirstChild("EggMisc")
+	local hatModel = eggMisc and eggMisc:FindFirstChild(eggData.HatType)
+	local toolModel = eggMisc and eggMisc:FindFirstChild(eggData.ToolType)
+	if hatModel then
+		styleEggPart(eggModel, "HAT", "Hat", hatModel:Clone(), false)
+	end
+	if toolModel then
+		styleEggPart(eggModel, "TOOL ", "Tool", toolModel:Clone(), true)
+	end
+	local eggShell = eggModel:FindFirstChild("EGGSHELL")
+	if eggShell then
+		eggShell.TextureID = eggData.ColorId
+	end
 	return eggModel
 end
 
@@ -59,7 +74,11 @@ styleEggPart = function(eggModel: Model, slotName: string, targetPartName: strin
 		local halfHeight = -(part.Size.Y / 2)
 		attachment.Position = Vector3.new(0, halfHeight, 0)
 	end
-	local targetPart = eggModel.PrimaryPart:FindFirstChild(targetPartName)
+	local primaryPart = eggModel.PrimaryPart
+	local targetPart = primaryPart and primaryPart:FindFirstChild(targetPartName)
+	if targetPart == nil then
+		return nil
+	end
 	local alignPosition: AlignPosition = Instance.new("AlignPosition")
 	alignPosition.Attachment0 = attachment
 	alignPosition.Attachment1 = targetPart

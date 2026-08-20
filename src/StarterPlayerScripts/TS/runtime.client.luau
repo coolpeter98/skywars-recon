@@ -48,9 +48,11 @@ Flamework._addPaths({
 		"cosmetics",
 	},
 })
+print("BOOT-DEBUG: paths 1-3 done")
 Flamework._addPaths({
 	{ "ReplicatedStorage", "TS", "components" },
 })
+print("BOOT-DEBUG: rs components done")
 Flamework._addPaths({
 	{
 		"ReplicatedStorage",
@@ -59,8 +61,11 @@ Flamework._addPaths({
 		"cage",
 	},
 })
+print("BOOT-DEBUG: cage done")
 Flamework._addPaths({
 	{ "ReplicatedStorage", "TS", "modules" },
 })
+print("BOOT-DEBUG: modules done")
 Flamework.ignite()
+print("BOOT-DEBUG: ignite done")Flamework.ignite()
 PlaceUtil.isProduction()
