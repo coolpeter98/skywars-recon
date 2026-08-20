@@ -27,6 +27,8 @@ skywars-project/
 ├── .game_scripts_remaining.txt # 730 of the above (the 4 pilot files removed)
 ├── .batch_00 … .batch_04     # 5 split batches of the remaining manifest (164/140/140/145/141)
 ├── .events_rewrite.txt       # 58 files that had Events["<uuid>"] refs (all rewritten)
+├── missing-assets.json       # Asset Delivery-confirmed inaccessible assets with aliases and source references
+├── tools/probe_missing_assets.py # Rebuilds missing-assets.json by probing every rbxassetid under src/
 └── src/                      # the synced Instance tree
     ├── README.server.luau    # decompiler's readme Script (not game code)
     ├── ReplicatedFirst/      # loading.client.luau (custom teleport loading screen)
