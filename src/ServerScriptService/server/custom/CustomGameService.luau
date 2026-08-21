@@ -735,7 +735,7 @@ function CustomGameService.getAliveTeams(self): ({ [string]: { Player } }, numbe
 	return teams, countDictionary(teams)
 end
 
-function CustomGameService.eliminatePlayer(self, player: Player, damageType: string)
+function CustomGameService.eliminatePlayer(self, player: Player, damageType: string, killer: Player?)
 	local record = self.record
 	if record == nil or not record.InGame or player:GetAttribute("Alive") ~= true then
 		return
@@ -744,13 +744,15 @@ function CustomGameService.eliminatePlayer(self, player: Player, damageType: str
 	player:SetAttribute("Spectating", true)
 	self.context.inventoryService:clear(player)
 	table.insert(self.eliminatedPlayers, 1, player)
+	local killCredit = if killer ~= nil and killer.Parent == Players then killer else nil
 	local position: Vector3? = nil
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	if root and root:IsA("BasePart") then
 		position = root.Position
 	end
 	for _, recipient in Players:GetPlayers() do
-		self.context.outbound:fire("PlayerEliminated", recipient, player, nil, damageType, position)
+		self.context.outbound:fire("PlayerEliminated", recipient, player, killCredit, damageType, position)
+		self.context.outbound:fire("PlayerKilled", recipient, player, killCredit, damageType, position or Vector3.zero)
 	end
 	self.context.outbound:fire("Spectate", player, nil, position, nil)
 	self:replicateAll()

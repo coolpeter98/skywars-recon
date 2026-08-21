@@ -9,8 +9,13 @@ function CombatHandlers.new(context)
 	return setmetatable({ context = context }, CombatHandlers)
 end
 
-function CombatHandlers.meleeStrike(self, player: Player, target: Player?) end
-function CombatHandlers.meleeStrikeEntity(self, player: Player, target: Model) end
+function CombatHandlers.meleeStrike(self, player: Player, target: Player?)
+	self.context.combatService:meleeStrike(player, target)
+end
+
+function CombatHandlers.meleeStrikeEntity(self, player: Player, target: Model)
+	self.context.combatService:meleeStrikeEntity(player, target)
+end
 
 function CombatHandlers.fireProjectile(
 	self,

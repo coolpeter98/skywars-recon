@@ -11,8 +11,10 @@
 --
 -- Collisions end the flight via `ProjectileTerminated`: an environment hit
 -- lets the client finish its own visual simulation (the arrow welds), while a
--- player hit or a lifetime expiry cleans the visual up immediately. Damage is
--- intentionally not implemented yet.
+-- player hit or a lifetime expiry cleans the visual up immediately. Player
+-- hits are routed into CombatService, which applies the arrow's damage,
+-- knockback (the same knockback system melee uses), and elimination/kill-feed
+-- events. Bow cooldowns also live in CombatService's shared registry.
 --
 -- The client may locally predict its own arrow (same speed and acceleration)
 -- and pass an identifier suffix with `FireProjectile`; this service echoes it
@@ -109,29 +111,19 @@ function ProjectileService.new(context)
 	return setmetatable({
 		context = context,
 		activeProjectiles = {} :: { [string]: Projectile },
-		cooldowns = setmetatable({}, { __mode = "k" }) :: { [Player]: { [string]: number } },
 		heartbeatConnection = nil :: RBXScriptConnection?,
 		started = false,
 	}, ProjectileService)
 end
 
+-- Cooldowns live in CombatService's shared registry (one system for every
+-- combat action). Bow cooldowns replicate to the client for the bow UI.
 function ProjectileService.isOnCooldown(self, player: Player, key: string): boolean
-	local playerCooldowns = self.cooldowns[player]
-	if playerCooldowns == nil then
-		return false
-	end
-	local expireTime = playerCooldowns[key]
-	return expireTime ~= nil and os.clock() < expireTime
+	return self.context.combatService:isOnCooldown(player, key)
 end
 
 function ProjectileService.setCooldown(self, player: Player, key: string, duration: number)
-	local playerCooldowns = self.cooldowns[player]
-	if playerCooldowns == nil then
-		playerCooldowns = {}
-		self.cooldowns[player] = playerCooldowns
-	end
-	playerCooldowns[key] = os.clock() + duration
-	self.context.outbound:fire("CooldownUpdated", player, key, duration)
+	self.context.combatService:setCooldown(player, key, duration, true)
 end
 
 function ProjectileService.isValidShooter(self, player: Player): boolean
@@ -252,6 +244,24 @@ function ProjectileService.fireProjectile(
 	return true
 end
 
+-- Applies arrow damage when a simulated projectile collides with a player.
+-- Damage comes from the projectile item's definition (e.g. Arrow.Projectile.
+-- Damage); knockback is built by CombatService's universal knockback system
+-- from the arrow's travel velocity.
+function ProjectileService.dealPlayerHit(self, projectile: Projectile, target: Player)
+	local combatService = self.context.combatService
+	if combatService == nil then
+		return
+	end
+	local itemDefinition = Items[projectile.itemName]
+	local projectileData = itemDefinition and itemDefinition.Projectile or nil
+	local damage = projectileData and projectileData.Damage or nil
+	if not isFinite(damage) then
+		return
+	end
+	combatService:dealProjectileHit(projectile.shooter, target, damage, projectile.velocity)
+end
+
 function ProjectileService.terminate(self, projectile: Projectile, finishSimulation: boolean)
 	if self.activeProjectiles[projectile.identifier] == nil then
 		return
@@ -278,6 +288,9 @@ function ProjectileService.step(self, rawDeltaTime: number)
 		if hit ~= nil then
 			projectile.position = hit.Position
 			local hitPlayer = getPlayerFromHit(hit.Instance)
+			if hitPlayer ~= nil then
+				self:dealPlayerHit(projectile, hitPlayer)
+			end
 			table.insert(terminations, { projectile = projectile, finishSimulation = hitPlayer == nil })
 		end
 	end
@@ -295,7 +308,7 @@ function ProjectileService.clearAll(self)
 	for _, projectile in projectiles do
 		self:terminate(projectile, false)
 	end
-	table.clear(self.cooldowns)
+	self.context.combatService:clearCooldowns()
 end
 
 function ProjectileService.start(self)

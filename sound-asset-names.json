@@ -1,0 +1,554 @@
+[
+ {
+  "key": "OPEN",
+  "id": 9709271845,
+  "name": "Audio/Chest_Open",
+  "file": "c4d346b4028c2ce012a24d63b4f41144.ogg"
+ },
+ {
+  "key": "DAMAGE",
+  "id": 8455818629,
+  "name": "pd",
+  "file": "70827f12630994c76dfa0d5cd1f60426.ogg"
+ },
+ {
+  "key": "MOVE_ITEM",
+  "id": 8380833278,
+  "name": "Audio/b",
+  "file": "247140141e824162962491b8212eb3cd.ogg"
+ },
+ {
+  "key": "EQUIP_TOOL",
+  "id": 8380833386,
+  "name": "Audio/c",
+  "file": "351e7b80448edfaff5980c16bcfffca5.ogg"
+ },
+ {
+  "key": "EQUIP_BLOCK",
+  "id": 8380833583,
+  "name": "Audio/d",
+  "file": "7e1e4bab8bcc74b1814557673590fb93.ogg"
+ },
+ {
+  "key": "PICKUP_ITEM",
+  "id": 8908013134,
+  "name": "Audio/Pickup_Item",
+  "file": "1da41071bda16997b1b3a92e0187260f.ogg"
+ },
+ {
+  "key": "DRINK",
+  "id": 9403380332,
+  "name": "Audio/Potion_Drink",
+  "file": "fa16ea5fede68e674f75ae6a37220648.ogg"
+ },
+ {
+  "key": "HIT",
+  "id": 8455818143,
+  "name": "bh",
+  "file": "f8decc9c57323731ae76686e85c59613.ogg"
+ },
+ {
+  "key": "BREAK",
+  "id": 8455817751,
+  "name": "bb",
+  "file": "ddc6218cabc85673f2868d38359c72c4.ogg"
+ },
+ {
+  "key": "PLACE",
+  "id": 8429664778,
+  "name": "b",
+  "file": "65880f043585ddbbfe94186c457d7537.ogg"
+ },
+ {
+  "key": "SLASH",
+  "id": 8436511628,
+  "name": "sl",
+  "file": "0eb46255194ad59294ed33998fea4639.ogg"
+ },
+ {
+  "key": "EQUIP",
+  "id": 8455819490,
+  "name": "se",
+  "file": "4415d63d0c2eef51fe3bdb836d392c77.ogg"
+ },
+ {
+  "key": "DRAW",
+  "id": 8534188700,
+  "name": "d",
+  "file": "3deab7b629cad7449ec257a300d118e9.ogg"
+ },
+ {
+  "key": "FIRE",
+  "id": 8534189104,
+  "name": "f",
+  "file": "07272420fec201b11eb6c4eb72376ac1.ogg"
+ },
+ {
+  "key": "FIRE",
+  "id": 8611122546,
+  "name": "Audio/et",
+  "file": "4a83a95bc17948522dd80ce5c28bd953.ogg"
+ },
+ {
+  "key": "IMPACT",
+  "id": 8611122368,
+  "name": "Audio/ei",
+  "file": "c68469cbae8cd8eb34e4ec941f3629ca.ogg"
+ },
+ {
+  "key": "FIRE",
+  "id": 8611122168,
+  "name": "Audio/st",
+  "file": "9ff0fe6830a20c9a5e9854f62bbccc0b.ogg"
+ },
+ {
+  "key": "IMPACT",
+  "id": 8611121964,
+  "name": "Audio/si",
+  "file": "13f99d9f2467f3ec4e4e2d2cce8ba548.ogg"
+ },
+ {
+  "key": "EQUIP",
+  "id": 10593895437,
+  "name": "Audio/ExplodingCapybara_Equip",
+  "file": "bb44138c5b6e6f5b589ea57ca002b672.ogg"
+ },
+ {
+  "key": "FLYING",
+  "id": 10593881209,
+  "name": "Audio/ExplodingCapybara_Flying_Loop_4",
+  "file": "5d3ccc613dcb05c83e6020d1efb59be7.ogg"
+ },
+ {
+  "key": "IMPACT",
+  "id": 10591846837,
+  "name": "Audio/ExplodingCapybara_Hit",
+  "file": "996ab38ee6feddcd8a236e69c8fecda2.ogg"
+ },
+ {
+  "key": "HIT",
+  "id": 8380833720,
+  "name": "Audio/g",
+  "file": "7155b8f5d67e411bfd0277597897bd7a.ogg"
+ },
+ {
+  "key": "GAME_WIN",
+  "id": 6608499332,
+  "name": "Audio/GameWin",
+  "file": "8b91da9f34a44dda21c4a0d403b2264e.ogg"
+ },
+ {
+  "key": "GAME_LOSE",
+  "id": 6608499387,
+  "name": "Audio/GameLose",
+  "file": "f1e2b58fd5613044aa63cf30d3fb58bf.ogg"
+ },
+ {
+  "key": "GAIN_COINS",
+  "id": 6582070562,
+  "name": "Audio/GainCoins_2 (1)",
+  "file": "5d3fb69cdc865078fffca980a7970a37.ogg"
+ },
+ {
+  "key": "LOSE_COINS",
+  "id": 6608491383,
+  "name": "Audio/LoseCoins",
+  "file": "b30ac8d9d99be882bf89987c1e8e144f.ogg"
+ },
+ {
+  "key": "LEVEL_UP",
+  "id": 6582070491,
+  "name": "Audio/LevelUp_1 (1)",
+  "file": "043f27f6a9906f058e3d053dd275f030.ogg"
+ },
+ {
+  "key": "ONE",
+  "id": 10098077058,
+  "name": "Audio/Kill_Sounds_01_with_music_",
+  "file": "867d83fd02d421842abca64b448f25d0.ogg"
+ },
+ {
+  "key": "TWO",
+  "id": 10098077409,
+  "name": "Audio/Kill_Sounds_02_with_music",
+  "file": "8490e538a2f01a8ae1b8e2d43639c498.ogg"
+ },
+ {
+  "key": "THREE",
+  "id": 10098076925,
+  "name": "Audio/Kill_Sounds_03_with_music",
+  "file": "26f845b4e67f92420eaf7e69310f39ee.ogg"
+ },
+ {
+  "key": "FOUR",
+  "id": 10098076768,
+  "name": "Audio/Kill_Sounds_04_with_music",
+  "file": "77336df2250f3e2b771d85d1e873721d.ogg"
+ },
+ {
+  "key": "FIVE",
+  "id": 10098079539,
+  "name": "Audio/05",
+  "file": "28f52e4e6c4cc289920e1f24ddca78e8.ogg"
+ },
+ {
+  "key": "THREE",
+  "id": 11095062534,
+  "name": "Audio/Countdown_Chime_1_",
+  "file": "a19ac1896726cbc15f713ec2f1dfc96b.ogg"
+ },
+ {
+  "key": "TWO",
+  "id": 11095062429,
+  "name": "Audio/Countdown_Chime_2",
+  "file": "b583c267dc8910e06718aebc95161853.ogg"
+ },
+ {
+  "key": "ONE",
+  "id": 11095062688,
+  "name": "Audio/Countdown_Chime_3",
+  "file": "5e19d3779515d020acb9571c74ffa168.ogg"
+ },
+ {
+  "key": "GO",
+  "id": 11095062601,
+  "name": "Audio/Countdown_Chime_4",
+  "file": "afb1708d6a660595dc913720a67c1c2c.ogg"
+ },
+ {
+  "key": "WIND",
+  "id": 9172578252,
+  "name": "Ambience_Wind",
+  "file": "ccda3e7b8305698a0db96186b52ff17f.ogg"
+ },
+ {
+  "key": "TICK",
+  "id": 8429665820,
+  "name": "t",
+  "file": "a5c2d0fb9bfadd3a847df9b74f91d8e3.ogg"
+ },
+ {
+  "key": "TICK_START",
+  "id": 8436512507,
+  "name": "gs",
+  "file": "b56b3008f50893a1077a37ba92f8924a.ogg"
+ },
+ {
+  "key": "KILL",
+  "id": 8455820666,
+  "name": "e",
+  "file": "0458b2ea8c9b265a79495553501564f8.ogg"
+ },
+ {
+  "key": "WIN",
+  "id": 9172577042,
+  "name": "Game_Win",
+  "file": "cbd7fe8a07f5c56ce43999fd43a6b2a6.ogg"
+ },
+ {
+  "key": "LOSS",
+  "id": 9172577628,
+  "name": "Game_Lose",
+  "file": "d8f796c64d37c6e15d142fddee853f19.ogg"
+ },
+ {
+  "key": "WIN_PODIUM",
+  "id": 9544794938,
+  "name": "LoopMusic",
+  "file": "59981625b5fbf98f7f710aeb8f0e73ad.ogg"
+ },
+ {
+  "key": "UFO_IDLE",
+  "id": 8837591387,
+  "name": "Audio/UFO_Idling_Loop",
+  "file": "bae5e816ee322b26c58c48c2a2da6a26.ogg"
+ },
+ {
+  "key": "START",
+  "id": 8482233409,
+  "name": "start",
+  "file": "5b82e784b06c985d52ad8d42960330bf.ogg"
+ },
+ {
+  "key": "SUCCESSFUL",
+  "id": 8482231837,
+  "name": "found",
+  "file": "f1729bb5a7a4edd23c94d4904849c0a2.ogg"
+ },
+ {
+  "key": "CANCEL",
+  "id": 8482232751,
+  "name": "cancel",
+  "file": "60250e7751ef241f64c1d1c550c309ed.ogg"
+ },
+ {
+  "key": "DOWN",
+  "id": 8908013242,
+  "name": "Audio/ButtonClick_Down",
+  "file": "6393cb0e89a35144f76c40ca7df69c8e.ogg"
+ },
+ {
+  "key": "UP",
+  "id": 8908012931,
+  "name": "Audio/ButtonClick_Up",
+  "file": "8b9abe0e51a249dd4d8b5eef00b5e6b0.ogg"
+ },
+ {
+  "key": "SOUNDTRACK",
+  "id": 9773372659,
+  "name": "Audio/Sky_Wars_Lobby_Music_MASTER_looped_final (2)",
+  "file": "ba9792bdaef90942a4ffbebefb49da7f.ogg"
+ },
+ {
+  "key": "IDLE_ONE",
+  "id": 12947319318,
+  "name": "Audio/Wizard_Idle_01",
+  "file": "256a40ec0b9d8db7d5696a6880dde3bf.ogg"
+ },
+ {
+  "key": "IDLE_TWO",
+  "id": 12947265111,
+  "name": "Audio/Wizard_Idle_02",
+  "file": "24978a9a80fc4365f35dfca873e0a7b9.ogg"
+ },
+ {
+  "key": "IDLE_THREE",
+  "id": 12947319813,
+  "name": "Audio/Wizard_Idle_03",
+  "file": "1fa099ae165dbd3f797fe4f1a0190984.ogg"
+ },
+ {
+  "key": "IDLE_FOUR",
+  "id": 12947264938,
+  "name": "Audio/Wizard_Idle_04",
+  "file": "03d6e86d627670a6861486ef7928d176.ogg"
+ },
+ {
+  "key": "IDLE_ONE",
+  "id": 12947266005,
+  "name": "Audio/Egg_Idle_01",
+  "file": "c7448984401df89d703954379ea09cc1.ogg"
+ },
+ {
+  "key": "IDLE_TWO",
+  "id": 12947319110,
+  "name": "Audio/Egg_Idle_02",
+  "file": "d0aa5228ba2fed68f4bdd849f60e2ccd.ogg"
+ },
+ {
+  "key": "IDLE_THREE",
+  "id": 12947266115,
+  "name": "Audio/Egg_Idle_03",
+  "file": "ab90f0923e32b56631ff652f90586dca.ogg"
+ },
+ {
+  "key": "IDLE_FOUR",
+  "id": 12947265896,
+  "name": "Audio/Egg_Idle_04",
+  "file": "dafdf58354199bd816b34b220544505c.ogg"
+ },
+ {
+  "key": "EGG_HIT",
+  "id": 12947319985,
+  "name": "Audio/Egg_Hit",
+  "file": "f7c1752f181b01e5da5447d44b8b716e.ogg"
+ },
+ {
+  "key": "EGG_DEATH",
+  "id": 12947319436,
+  "name": "Audio/Egg_Death (1)",
+  "file": "27e9a245fadad2a101670f4e710f62b7.ogg"
+ },
+ {
+  "key": "IDLE_ONE",
+  "id": 12947270476,
+  "name": "Audio/Blacksmith_Idle_01",
+  "file": "9d1fb8744c7749e2e7581f3107b36a49.ogg"
+ },
+ {
+  "key": "IDLE_TWO",
+  "id": 12947319745,
+  "name": "Audio/Blacksmith_Idle_02",
+  "file": "90207e6a3684fec2713d21341a59a284.ogg"
+ },
+ {
+  "key": "IDLE_THREE",
+  "id": 12947319911,
+  "name": "Audio/Blacksmith_Idle_03",
+  "file": "990e9e28f907a7d5e278b9df44026907.ogg"
+ },
+ {
+  "key": "IDLE_FOUR",
+  "id": 12947268546,
+  "name": "Audio/Blacksmith_Idle_04",
+  "file": "06d866d47d7f20b05f3e077a93838961.ogg"
+ },
+ {
+  "key": "IDLE_ONE",
+  "id": 12947268791,
+  "name": "Audio/Dog_Pant_01",
+  "file": "4e73b8d8e42de031ab9c4d462d0cae5c.ogg"
+ },
+ {
+  "key": "IDLE_TWO",
+  "id": 12947268743,
+  "name": "Audio/Dog_Pant_02",
+  "file": "a7997eb865d23e474e04ed0a942774ba.ogg"
+ },
+ {
+  "key": "IDLE_THREE",
+  "id": 12947268657,
+  "name": "Audio/Dog_Pant_03",
+  "file": "c58b8955097e849d5cbc6ef943351ad4.ogg"
+ },
+ {
+  "key": "IDLE_FOUR",
+  "id": 12947268441,
+  "name": "Audio/Dog_Pant_04",
+  "file": "fe24f54104e2c804fe68d30abf560310.ogg"
+ },
+ {
+  "key": "DROPPER_DROP",
+  "id": 12947266168,
+  "name": "Audio/Dropper_Pop",
+  "file": "b306270608ab0db916c4b05a6031ce28.ogg"
+ },
+ {
+  "key": "DROPPER_IDLE",
+  "id": 12947319642,
+  "name": "Audio/Dropper_Flying_Loop",
+  "file": "6a84e4a9aae52185a87b54323a131f3a.ogg"
+ },
+ {
+  "key": "TEAM_ELIMINATED",
+  "id": 12947265040,
+  "name": "Audio/Team_Eliminated",
+  "file": "31adaf674fa8deb25d1f24fca432c645.ogg"
+ },
+ {
+  "key": "TEAM_UPGRADE",
+  "id": 12947265780,
+  "name": "Audio/Team_Upgrade",
+  "file": "0202bba5fcd2fe12067b8bb8416a66d1.ogg"
+ },
+ {
+  "key": "PURCHASE",
+  "id": 12947265840,
+  "name": "Audio/Purchase",
+  "file": "8bd15a7c234f8c14e5e28f52ebabef42.ogg"
+ },
+ {
+  "key": "UPGRADE",
+  "id": 12947270587,
+  "name": "Audio/Armour_Upgrade",
+  "file": "63b247bb9c1ebc9ae6a4d42abd95858e.ogg"
+ },
+ {
+  "key": "IMPACT",
+  "id": 13181076146,
+  "name": "Audio/Firework_Explosion",
+  "file": "189e34996c756bb61990266f5b99724f.ogg"
+ },
+ {
+  "key": "FLYING",
+  "id": 13181076193,
+  "name": "Audio/Firework_Flying_Loop",
+  "file": "dc9ad1d255c5a35cfdd48f439a8945dc.ogg"
+ },
+ {
+  "key": "CRATE_OPEN",
+  "id": 18210578789,
+  "name": "Audio/1",
+  "file": "935006ca536bd1e2d7f43756c8cd892b.ogg"
+ },
+ {
+  "key": "CRATE_OPENED_LOOP_01",
+  "id": 18210576237,
+  "name": "Audio/2",
+  "file": "9c58f35b7f08c7d9063c9606e7cf8f82.ogg"
+ },
+ {
+  "key": "CRATE_OPENED_LOOP_02",
+  "id": 18210576695,
+  "name": "Audio/3",
+  "file": "4079ddd9a6d12ffeb6321f80429082ca.ogg"
+ },
+ {
+  "key": "CRATE_OPENED_LOOP_03",
+  "id": 18210578357,
+  "name": "Audio/4",
+  "file": "f34613c24262bae10242033b07371b11.ogg"
+ },
+ {
+  "key": "CRATE_OPENED_LOOP_04",
+  "id": 18210577027,
+  "name": "Audio/5",
+  "file": "be5a6bc5bc2ff9d5f83c44243a4fca7f.ogg"
+ },
+ {
+  "key": "CRATE_OPENED_LOOP_05",
+  "id": 18210577954,
+  "name": "Audio/6",
+  "file": "f71432b4eb3f4aad39c5ea19eb4bf494.ogg"
+ },
+ {
+  "key": "CRATE_OPENED_LOOP_06",
+  "id": 18210577506,
+  "name": "Audio/7",
+  "file": "f6faf338056f0afad0ec02c66f1a4b3f.ogg"
+ },
+ {
+  "key": "WIN_EFFECT",
+  "id": 131179969284554,
+  "name": "Audio/WinEffect",
+  "file": "d6585000768740ac1c604aaebccff1ee.ogg"
+ },
+ {
+  "key": "WIN_EFFECT_AMBIENT",
+  "id": 93476224172163,
+  "name": "Audio/WinEffect_Ambient",
+  "file": "8eb199b6894913741527dc0cdfa4a67e.ogg"
+ },
+ {
+  "key": "WIN_EFFECT_PLATFORM_HOVER_LOOP",
+  "id": 125027021117399,
+  "name": "Audio/WinEffect_PlatformHover_Loop",
+  "file": "d748962fb797fcff5f04e6bc24eaf7c3.ogg"
+ },
+ {
+  "key": "WIN_EFFECT_BRONZE_PLATFORM_IN",
+  "id": 124723237216353,
+  "name": "Audio/WinEffect_PlatformIn_01",
+  "file": "cfd15c69a8f55737f9a84d2cc45f6c41.ogg"
+ },
+ {
+  "key": "WIN_EFFECT_SILVER_PLATFORM_IN",
+  "id": 132736796331505,
+  "name": "Audio/WinEffect_PlatformIn_02",
+  "file": "637a44c819233aaa70c87c6b93f987c1.ogg"
+ },
+ {
+  "key": "WIN_EFFECT_GOLD_PLATFORM_IN",
+  "id": 139647530659875,
+  "name": "Audio/WinEffect_PlatformIn_03",
+  "file": "0b8542f6f3a68640ea69a30ee022aba7.ogg"
+ },
+ {
+  "key": "WIN_EFFECT_BRONZE_TROPHY_IN",
+  "id": 90974401644740,
+  "name": "Audio/WinEffect_TrophyAppear_01",
+  "file": "39fb54b22d26031335bcf4c14f96a05c.ogg"
+ },
+ {
+  "key": "WIN_EFFECT_SILVER_TROPHY_IN",
+  "id": 137303053687283,
+  "name": "Audio/WinEffect_TrophyAppear_02",
+  "file": "92cd3f88238e03b858caf57a15e60734.ogg"
+ },
+ {
+  "key": "WIN_EFFECT_GOLD_TROPHY_IN",
+  "id": 83148721067912,
+  "name": "Audio/WinEffect_TrophyAppear_03",
+  "file": "cc6b5b9e3076e2e4aa2df15d6d869487.ogg"
+ }
+]
