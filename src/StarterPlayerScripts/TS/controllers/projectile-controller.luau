@@ -31,6 +31,7 @@ local Services = RuntimeLib.import(
 	"services"
 )
 local Debris: Debris = Services.Debris
+local HttpService: HttpService = Services.HttpService
 local Players: Players = Services.Players
 local RunService: RunService = Services.RunService
 local UserInputService: UserInputService = Services.UserInputService
@@ -80,6 +81,8 @@ local ProjectileConstants = RuntimeLib.import(
 ).ProjectileConstants
 local Attribute = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "attribute").Attribute
 
+local PREDICTION_CONFIRM_TIMEOUT = 10
+
 type ProjectileController = {
 	sprintingController: any,
 	fovController: any,
@@ -90,6 +93,7 @@ type ProjectileController = {
 	maid: any,
 	maidTwo: any,
 	activeProjectiles: { [string]: any },
+	pendingPredictions: { [string]: number },
 }
 
 local ProjectileController = setmetatable({}, {
@@ -122,6 +126,7 @@ function ProjectileController.constructor(
 	self.maid = Maid.new()
 	self.maidTwo = Maid.new()
 	self.activeProjectiles = {}
+	self.pendingPredictions = {}
 end
 
 function ProjectileController.onStart(self: ProjectileController)
@@ -136,6 +141,10 @@ function ProjectileController.onStart(self: ProjectileController)
 			bulletTemplate: BasePart?,
 			trailName: string?
 		)
+			if self.pendingPredictions[identifier] ~= nil then
+				self.pendingPredictions[identifier] = nil
+				return nil
+			end
 			self:projectileFired(shooter, itemName, origin, direction, velocity, identifier, bulletTemplate, trailName)
 		end
 	)
@@ -304,6 +313,54 @@ function ProjectileController.playTrailEffect(self: ProjectileController, bullet
 	end))
 end
 
+function ProjectileController.registerPrediction(self: ProjectileController, identifier: string)
+	local now = os.clock()
+	local staleIdentifiers: { string } = {}
+	for existingIdentifier, registeredAt in self.pendingPredictions do
+		if now - registeredAt > PREDICTION_CONFIRM_TIMEOUT then
+			table.insert(staleIdentifiers, existingIdentifier)
+		end
+	end
+	for _, staleIdentifier in staleIdentifiers do
+		self.pendingPredictions[staleIdentifier] = nil
+	end
+	self.pendingPredictions[identifier] = now
+end
+
+function ProjectileController.predictedFire(
+	self: ProjectileController,
+	projectileType: string,
+	projectileData: any,
+	direction: Vector3,
+	strength: number
+): string?
+	if projectileType ~= "Arrow" or direction.Magnitude <= 0 then
+		return nil
+	end
+	local character = GetCharacter()
+	local primaryPart = character and character.PrimaryPart
+	if primaryPart == nil then
+		return nil
+	end
+	local projectileVelocity = projectileData.Velocity
+	local bulletSpeed = (projectileVelocity == nil and 200 or projectileVelocity) * strength
+	local origin = primaryPart.CFrame * ProjectileConstants.ORIGIN_OFFSET
+	local predictionSuffix = HttpService:GenerateGUID(false)
+	local identifier = ("%d:%s"):format(Players.LocalPlayer.UserId, predictionSuffix)
+	self:registerPrediction(identifier)
+	self:projectileFired(
+		Players.LocalPlayer,
+		projectileType,
+		origin.Position,
+		direction,
+		bulletSpeed,
+		identifier,
+		nil,
+		nil
+	)
+	return predictionSuffix
+end
+
 function ProjectileController.chargeBow(self: ProjectileController, inputObject: InputObject)
 	if not InputUtil.isWorldInteract(inputObject) then
 		return nil
@@ -421,7 +478,8 @@ function ProjectileController.chargeBow(self: ProjectileController, inputObject:
 				["Volume"] = 0.8,
 			})
 		end
-		Events.FireProjectile:fire(direction, strength)
+		local predictionSuffix = self:predictedFire(projectileType, projectileData, direction, strength)
+		Events.FireProjectile:fire(direction, strength, predictionSuffix)
 	end)
 	self.maid:GiveTask(Flamework.resolveDependency("Dqk").ActiveItemUpdated:bind(function(activeItemUpdate)
 		local heldItemInfo = activeItemUpdate.heldItemInfo

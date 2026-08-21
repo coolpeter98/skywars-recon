@@ -11,7 +11,17 @@ end
 
 function CombatHandlers.meleeStrike(self, player: Player, target: Player?) end
 function CombatHandlers.meleeStrikeEntity(self, player: Player, target: Model) end
-function CombatHandlers.fireProjectile(self, player: Player, direction: Vector3, strength: number) end
+
+function CombatHandlers.fireProjectile(
+	self,
+	player: Player,
+	direction: Vector3,
+	strength: number,
+	predictionId: string?
+)
+	self.context.projectileService:fireProjectile(player, direction, strength, predictionId)
+end
+
 function CombatHandlers.activatePowerUp(self, player: Player) end
 
 function CombatHandlers.getRoutes(self)
@@ -32,9 +42,12 @@ function CombatHandlers.getRoutes(self)
 		},
 		{
 			Name = "FireProjectile",
-			Validate = Validation.tuple({ Validation.finiteVector3, Validation.finiteNumber }),
+			Validate = Validation.tuple(
+				{ Validation.finiteVector3, Validation.numberRange(0, 1), Validation.optional(Validation.string) },
+				2
+			),
 			Handle = function(player, arguments)
-				self:fireProjectile(player, arguments[1], arguments[2])
+				self:fireProjectile(player, arguments[1], arguments[2], arguments[3])
 			end,
 		},
 		{

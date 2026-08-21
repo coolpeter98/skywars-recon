@@ -10,4 +10,6 @@ local projectileConstants: ProjectileConstants = {
 	ORIGIN_OFFSET = CFrame.new(Vector3.new(0.5, 1.3, -2)),
 }
 
-return projectileConstants
+return {
+	["ProjectileConstants"] = projectileConstants,
+} :: { ProjectileConstants: ProjectileConstants }

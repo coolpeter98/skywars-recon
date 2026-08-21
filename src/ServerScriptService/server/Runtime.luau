@@ -6,6 +6,7 @@ local PlayerSessions = require(script.Parent.PlayerSessions)
 local EventRouter = require(script.Parent.EventRouter)
 local FunctionRouter = require(script.Parent.FunctionRouter)
 local InventoryService = require(script.Parent.inventory.InventoryService)
+local ProjectileService = require(script.Parent.projectile.ProjectileService)
 local MatchmakingService = require(script.Parent.matchmaking.MatchmakingService)
 local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextService)
 local PartyService = require(script.Parent.party.PartyService)
@@ -48,6 +49,8 @@ function Runtime.new()
 	context.matchmakingService = matchmakingService
 	local inventoryService = InventoryService.new(context)
 	context.inventoryService = inventoryService
+	local projectileService = ProjectileService.new(context)
+	context.projectileService = projectileService
 	local eventRoutes = {}
 	appendRoutes(eventRoutes, SessionHandlers.new(context):getRoutes())
 	appendRoutes(eventRoutes, MatchmakingHandlers.new(context):getRoutes())
@@ -64,6 +67,7 @@ function Runtime.new()
 		partyService = partyService,
 		customGameService = customGameService,
 		inventoryService = inventoryService,
+		projectileService = projectileService,
 		matchmakingService = matchmakingService,
 		eventRouter = EventRouter.new(remoteRegistry, playerSessions, eventRoutes),
 		functionRouter = FunctionRouter.new(remoteRegistry, playerSessions, functionRoutes),
@@ -79,6 +83,7 @@ function Runtime.start(self)
 	self.customGameService:start()
 	self.matchmakingService:start()
 	self.inventoryService:start()
+	self.projectileService:start()
 	self.eventRouter:start()
 	self.functionRouter:start()
 	self.playerSessions:start()
@@ -92,6 +97,7 @@ function Runtime.stop(self)
 	self.customGameService:stop()
 	self.partyService:stop()
 	self.matchmakingService:stop()
+	self.projectileService:stop()
 	self.inventoryService:stop()
 	self.playerSessions:stop()
 	self.functionRouter:stop()
