@@ -11,10 +11,13 @@ Roblox does not allow uploading public sounds, you'll have to upload the sounds 
 ### Qna
 
 Q: Is this legal?
+
 A: I don't know.
 
 Q: Why are you doing this?
+
 A: Mostly out of boredom. And I believe that everything should be open source. This is a step towards that direction.
 
 Q: Can I contribute with AI?
+
 A: Yes.
