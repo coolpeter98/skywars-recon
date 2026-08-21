@@ -1,6 +1,6 @@
 --!strict
 
-local Runtime = require(script.server.Runtime)
+local Runtime = require(script.Parent.server.Runtime)
 
 local runtime = Runtime.new()
 runtime:start()
