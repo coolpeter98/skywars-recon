@@ -9,10 +9,14 @@ function MatchmakingHandlers.new(context)
 	return setmetatable({ context = context }, MatchmakingHandlers)
 end
 
-function MatchmakingHandlers.joinQueue(self, player: Player, joining: boolean, gameMode: string?) end
+function MatchmakingHandlers.joinQueue(self, player: Player, joining: boolean, gameMode: string?)
+	self.context.matchmakingService:joinQueue(player, joining, gameMode)
+end
 function MatchmakingHandlers.requestSpectate(self, player: Player) end
 function MatchmakingHandlers.spectateTargetChanged(self, player: Player, target: Player) end
-function MatchmakingHandlers.teleportToHub(self, player: Player) end
+function MatchmakingHandlers.teleportToHub(self, player: Player)
+	self.context.matchmakingService:teleportToLobby(player)
+end
 function MatchmakingHandlers.teleportToHubInstance(self, player: Player) end
 
 function MatchmakingHandlers.getRoutes(self)

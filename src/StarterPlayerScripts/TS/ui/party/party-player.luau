@@ -291,16 +291,7 @@ getStatus = function(player)
 	if player.Status == SocialStatus.InGame then
 		return (player.PlaceId == nil or (player.PlaceId == 0 or not PlaceUtil.isOurUniverse(player.PlaceId)))
 				and { "On Roblox", Color.LightBlue }
-			or (
-				PlaceUtil.isLobbyServer(player.PlaceId) and { "In Lobby", Color.Green }
-				or (
-					PlaceUtil.isGamePlace(player.PlaceId) and { "In Game", Color.Green }
-					or (
-						PlaceUtil.isDuelsServer(player.PlaceId) and { "In Duels", Color.Green }
-						or { "In Custom", Color.Green }
-					)
-				)
-			)
+			or { "Playing SkyWars", Color.Green }
 	else
 		return player.Status == SocialStatus.Online and { "On Roblox", Color.LightBlue } or { "Offline", Color.Grey }
 	end

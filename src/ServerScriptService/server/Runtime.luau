@@ -5,6 +5,8 @@ local Outbound = require(script.Parent.Outbound)
 local PlayerSessions = require(script.Parent.PlayerSessions)
 local EventRouter = require(script.Parent.EventRouter)
 local FunctionRouter = require(script.Parent.FunctionRouter)
+local MatchmakingService = require(script.Parent.matchmaking.MatchmakingService)
+local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextService)
 
 local SessionHandlers = require(script.Parent.handlers.SessionHandlers)
 local MatchmakingHandlers = require(script.Parent.handlers.MatchmakingHandlers)
@@ -29,10 +31,14 @@ function Runtime.new()
 	local remoteRegistry = RemoteRegistry.new()
 	local outbound = Outbound.new(remoteRegistry)
 	local playerSessions = PlayerSessions.new(outbound)
+	local runtimeContext = RuntimeContextService.new()
 	local context = {
 		outbound = outbound,
 		playerSessions = playerSessions,
+		runtimeContext = runtimeContext,
 	}
+	local matchmakingService = MatchmakingService.new(context)
+	context.matchmakingService = matchmakingService
 	local eventRoutes = {}
 	appendRoutes(eventRoutes, SessionHandlers.new(context):getRoutes())
 	appendRoutes(eventRoutes, MatchmakingHandlers.new(context):getRoutes())
@@ -46,6 +52,7 @@ function Runtime.new()
 	local functionRoutes = CustomServersService.new(context):getRoutes()
 	return setmetatable({
 		playerSessions = playerSessions,
+		matchmakingService = matchmakingService,
 		eventRouter = EventRouter.new(remoteRegistry, playerSessions, eventRoutes),
 		functionRouter = FunctionRouter.new(remoteRegistry, playerSessions, functionRoutes),
 		started = false,
@@ -56,6 +63,7 @@ function Runtime.start(self)
 	if self.started then
 		return
 	end
+	self.matchmakingService:start()
 	self.eventRouter:start()
 	self.functionRouter:start()
 	self.playerSessions:start()
@@ -66,6 +74,7 @@ function Runtime.stop(self)
 	if not self.started then
 		return
 	end
+	self.matchmakingService:stop()
 	self.playerSessions:stop()
 	self.functionRouter:stop()
 	self.eventRouter:stop()

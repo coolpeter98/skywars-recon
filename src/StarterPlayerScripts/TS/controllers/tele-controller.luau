@@ -1,19 +1,46 @@
 -- TeleController
 
-local RuntimeLib = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
-local FlameworkCore = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@flamework", "core", "out")
+local RuntimeLib =
+	require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local FlameworkCore = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@flamework",
+	"core",
+	"out"
+)
 local Reflect = FlameworkCore.Reflect
 local Flamework = FlameworkCore.Flamework
-local Controller = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@flamework", "core", "out").Controller
+local Controller = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@flamework",
+	"core",
+	"out"
+).Controller
 local Events = RuntimeLib.import(script, script.Parent.Parent, "events").Events
-local Services = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services")
+local Services = RuntimeLib.import(
+	script,
+	game:GetService("ReplicatedStorage"),
+	"rbxts_include",
+	"node_modules",
+	"@rbxts",
+	"services"
+)
 local Players: Players = Services.Players
 local TeleportService: TeleportService = Services.TeleportService
 local PlaceUtil = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "place", "place-util").PlaceUtil
 local GlobalStore = RuntimeLib.import(script, script.Parent.Parent, "ui", "rodux", "global-store").GlobalStore
-local PartyUtil = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "party", "party-instance").PartyUtil
-local SoundGroupType = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "sound", "sound-group-type").SoundGroupType
-local PlayerUtil = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "util", "player-util").PlayerUtil
+local PartyUtil =
+	RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "party", "party-instance").PartyUtil
+local SoundGroupType =
+	RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "sound", "sound-group-type").SoundGroupType
+local PlayerUtil =
+	RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "util", "player-util").PlayerUtil
 local LoadingScreen = RuntimeLib.import(script, script.Parent.Parent, "ui", "loading", "loading-screen").LoadingScreen
 
 type TeleController = {
@@ -24,7 +51,7 @@ type TeleController = {
 local TeleController = setmetatable({}, {
 	["__tostring"] = function()
 		return "TeleController"
-	end
+	end,
 })
 TeleController.__index = TeleController
 function TeleController.new(...)
@@ -55,6 +82,7 @@ function TeleController.teleportToHub(self: TeleController)
 	if self.teleporting then
 		return nil
 	end
+	self:setupTeleportGui()
 	local partyState = GlobalStore:getState().Party
 	if not PartyUtil.isHostingMultiplayerParty(PlayerUtil.toReplicated(Players.LocalPlayer), partyState) then
 		Flamework.resolveDependency("PrB"):leaveParty()
@@ -68,7 +96,13 @@ function TeleController.teleportToHubInstance(self: TeleController, instanceId: 
 	RuntimeLib.try(function()
 		self:setupTeleportGui()
 		Events.TeleportToHubInstance:fire()
-		TeleportService:TeleportToPlaceInstance(PlaceUtil.getLobbyId(), instanceId, Players.LocalPlayer, nil, customLoadingScreen)
+		TeleportService:TeleportToPlaceInstance(
+			PlaceUtil.getLobbyId(),
+			instanceId,
+			Players.LocalPlayer,
+			nil,
+			customLoadingScreen
+		)
 	end, function(err)
 		print(err)
 	end)
@@ -87,5 +121,5 @@ Reflect.defineMetadata(TeleController, "flamework:parameters", { "lB5" })
 Reflect.defineMetadata(TeleController, "flamework:implements", { "$:flamework@OnStart" })
 Reflect.decorate(TeleController, "$:flamework@Controller", Controller, {})
 return {
-	["TeleController"] = TeleController
+	["TeleController"] = TeleController,
 }
