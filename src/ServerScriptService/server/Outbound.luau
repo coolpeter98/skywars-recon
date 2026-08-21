@@ -75,7 +75,18 @@ function Outbound.sendVerificationState(self, player: Player, showVerify: boolea
 end
 
 function Outbound.sendInventory(self, player: Player, inventory: { [string]: any })
-	self:setValue(player, "Inventory", inventory)
+	-- Roblox remote replication drops non-contiguous numeric table keys in transit
+	-- (only the contiguous array part survives), which silently removed items from
+	-- sparse slot-keyed inventories. The original game serialized slot keys as
+	-- strings; the client's RoduxController converts them back with tonumber().
+	local wireContents = {}
+	for slot, item in inventory.Contents do
+		wireContents[tostring(slot)] = item
+	end
+	self:setValue(player, "Inventory", {
+		Size = inventory.Size,
+		Contents = wireContents,
+	})
 end
 
 function Outbound.sendActiveSlot(self, player: Player, activeSlot: number)
