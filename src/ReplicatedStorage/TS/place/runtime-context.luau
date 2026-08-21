@@ -9,6 +9,7 @@ local RuntimeContext = {
 		QueueId = "SkyWarsQueueId",
 		MatchId = "SkyWarsMatchId",
 		Production = "SkyWarsProduction",
+		StudioGameMode = "SkyWarsStudioGameMode",
 	},
 	Role = {
 		Lobby = "Lobby",

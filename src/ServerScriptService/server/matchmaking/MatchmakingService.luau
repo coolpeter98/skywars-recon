@@ -368,6 +368,10 @@ function MatchmakingService.configureReservedServer(self)
 end
 
 function MatchmakingService.validateAdmission(self, player: Player)
+	-- Studio game-context overrides have no reserved-server match record.
+	if RunService:IsStudio() then
+		return
+	end
 	local runtimeContext = self.context.runtimeContext:get()
 	if runtimeContext.Role ~= "Game" or runtimeContext.MatchId == nil then
 		return

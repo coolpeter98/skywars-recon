@@ -1,6 +1,7 @@
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local RuntimeContext = require(ReplicatedStorage.TS.place["runtime-context"]).RuntimeContext
 local MatchmakingConfig = require(script.Parent.MatchmakingConfig)
@@ -24,6 +25,14 @@ function RuntimeContextService.new()
 	local self = setmetatable({
 		context = nil :: GameContext?,
 	}, RuntimeContextService)
+	local studioGameMode = if RunService:IsStudio()
+		then ReplicatedStorage:GetAttribute(RuntimeContext.Attribute.StudioGameMode)
+		else nil
+	local studioModeConfig = if type(studioGameMode) == "string" then MatchmakingConfig.getMode(studioGameMode) else nil
+	if studioModeConfig ~= nil then
+		self:setGame(studioModeConfig.GameMode, studioModeConfig.QueueId, "studio-test")
+		return self
+	end
 	self:setLobby()
 	return self
 end
