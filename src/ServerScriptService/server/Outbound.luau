@@ -6,6 +6,9 @@ type PlayerSession = {
 	friends: { any },
 	friendIds: { number },
 	showVerify: boolean,
+	inventory: { [string]: any },
+	activeSlot: number,
+	gameCurrency: { [string]: any },
 }
 
 local Outbound = {}
@@ -24,6 +27,14 @@ end
 
 function Outbound.fireAll(self, eventName: string, ...)
 	self.remoteRegistry:getEvent(eventName):FireAllClients(...)
+end
+
+function Outbound.setValue(self, player: Player, key: string, value: any)
+	self.setValueRemote:FireClient(player, {
+		type = "SetValue",
+		Key = key,
+		Value = value,
+	})
 end
 
 function Outbound.sendProfile(self, player: Player, profile: { [string]: any })
@@ -63,12 +74,27 @@ function Outbound.sendVerificationState(self, player: Player, showVerify: boolea
 	})
 end
 
+function Outbound.sendInventory(self, player: Player, inventory: { [string]: any })
+	self:setValue(player, "Inventory", inventory)
+end
+
+function Outbound.sendActiveSlot(self, player: Player, activeSlot: number)
+	self:setValue(player, "ActiveSlot", activeSlot)
+end
+
+function Outbound.sendGameCurrency(self, player: Player, gameCurrency: { [string]: any })
+	self:setValue(player, "GameCurrency", gameCurrency)
+end
+
 function Outbound.sendBootstrap(self, player: Player, session: PlayerSession)
 	self.setValueRemote:FireClient(player, { type = "@@INIT" })
 	self:sendProfile(player, session.profile)
 	self:sendParty(player, session.party)
 	self:sendFriends(player, session.friends, session.friendIds)
 	self:sendVerificationState(player, session.showVerify)
+	self:sendInventory(player, session.inventory)
+	self:sendActiveSlot(player, session.activeSlot)
+	self:sendGameCurrency(player, session.gameCurrency)
 end
 
 return Outbound

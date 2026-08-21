@@ -12,9 +12,22 @@ export type PlayerSession = {
 	friends: { any },
 	friendIds: { number },
 	showVerify: boolean,
+	inventory: {
+		Size: number,
+		Contents: { [number]: { Slot: number, Type: string, Quantity: number } },
+	},
+	activeSlot: number,
+	gameCurrency: { Quantities: { [string]: number } },
+	equippedArmour: { [string]: string },
+	heldItemType: string?,
+	openChest: Model?,
+	pendingInventoryPredictions: {
+		[string]: { itemType: string, quantity: number, createdAt: number },
+	},
 }
 
 local BOOTSTRAP_RETRY_DELAYS = { 0, 0.5, 1, 2, 4, 8 }
+local INVENTORY_SIZE = 23
 
 local PlayerSessions = {}
 PlayerSessions.__index = PlayerSessions
@@ -75,6 +88,23 @@ function PlayerSessions.bootstrap(self, player: Player)
 		friends = {},
 		friendIds = {},
 		showVerify = false,
+		inventory = {
+			Size = INVENTORY_SIZE,
+			Contents = {},
+		},
+		activeSlot = 0,
+		gameCurrency = {
+			Quantities = {
+				TierOne = 0,
+				TierTwo = 0,
+				TierThree = 0,
+				TierFour = 0,
+			},
+		},
+		equippedArmour = {},
+		heldItemType = nil,
+		openChest = nil,
+		pendingInventoryPredictions = {},
 	}
 	self.sessions[player] = session
 

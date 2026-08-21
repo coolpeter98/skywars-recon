@@ -14,8 +14,13 @@ function EconomyHandlers.primeCosmeticPurchase(self, player: Player, cosmeticId:
 function EconomyHandlers.equipCosmetic(self, player: Player, cosmeticId: string) end
 function EconomyHandlers.claimSeasonPassTier(self, player: Player, tierId: number) end
 function EconomyHandlers.claimScavengerProp(self, player: Player, propId: number) end
-function EconomyHandlers.shopPurchaseItem(self, player: Player, shopType: string, itemIndex: number) end
-function EconomyHandlers.shopPurchaseUpgrade(self, player: Player, shopType: string, itemIndex: number) end
+function EconomyHandlers.shopPurchaseItem(self, player: Player, shopType: string, itemIndex: number)
+	self.context.inventoryService:purchaseItem(player, shopType, itemIndex)
+end
+
+function EconomyHandlers.shopPurchaseUpgrade(self, player: Player, shopType: string, itemIndex: number)
+	self.context.inventoryService:purchaseUpgrade(player, shopType, itemIndex)
+end
 function EconomyHandlers.shopPurchaseTeamUpgrade(self, player: Player, shopType: string, itemIndex: number) end
 
 function EconomyHandlers.getRoutes(self)

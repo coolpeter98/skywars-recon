@@ -5,6 +5,7 @@ local Outbound = require(script.Parent.Outbound)
 local PlayerSessions = require(script.Parent.PlayerSessions)
 local EventRouter = require(script.Parent.EventRouter)
 local FunctionRouter = require(script.Parent.FunctionRouter)
+local InventoryService = require(script.Parent.inventory.InventoryService)
 local MatchmakingService = require(script.Parent.matchmaking.MatchmakingService)
 local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextService)
 
@@ -39,6 +40,8 @@ function Runtime.new()
 	}
 	local matchmakingService = MatchmakingService.new(context)
 	context.matchmakingService = matchmakingService
+	local inventoryService = InventoryService.new(context)
+	context.inventoryService = inventoryService
 	local eventRoutes = {}
 	appendRoutes(eventRoutes, SessionHandlers.new(context):getRoutes())
 	appendRoutes(eventRoutes, MatchmakingHandlers.new(context):getRoutes())
@@ -52,6 +55,7 @@ function Runtime.new()
 	local functionRoutes = CustomServersService.new(context):getRoutes()
 	return setmetatable({
 		playerSessions = playerSessions,
+		inventoryService = inventoryService,
 		matchmakingService = matchmakingService,
 		eventRouter = EventRouter.new(remoteRegistry, playerSessions, eventRoutes),
 		functionRouter = FunctionRouter.new(remoteRegistry, playerSessions, functionRoutes),
@@ -64,6 +68,7 @@ function Runtime.start(self)
 		return
 	end
 	self.matchmakingService:start()
+	self.inventoryService:start()
 	self.eventRouter:start()
 	self.functionRouter:start()
 	self.playerSessions:start()
@@ -75,6 +80,7 @@ function Runtime.stop(self)
 		return
 	end
 	self.matchmakingService:stop()
+	self.inventoryService:stop()
 	self.playerSessions:stop()
 	self.functionRouter:stop()
 	self.eventRouter:stop()
