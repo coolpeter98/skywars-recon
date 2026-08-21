@@ -29,7 +29,7 @@ type ItemDefinition = {
 	ItemGroup: string?,
 	Melee: { Damage: number }?,
 	Pickaxe: { TimeMultiplier: number }?,
-	Armour: { ArmourType: string }?,
+	Armour: { ArmourType: string, DamageMitigation: number }?,
 	Block: any?,
 	Currency: any?,
 	Rewrite: { Type: string }?,
@@ -41,6 +41,7 @@ type ChestState = {
 }
 
 local CHEST_SIZE = 18
+local HOTBAR_SIZE = 8
 local MAX_ITEM_QUANTITY = 1_000_000
 local MAX_PREDICTION_ID_LENGTH = 128
 local PREDICTION_TIMEOUT = 3
@@ -92,6 +93,28 @@ local function findEmptySlot(inventory: Inventory, fromEnd: boolean?): number?
 	return nil
 end
 
+local function findEmptySlotInRange(
+	inventory: Inventory,
+	firstSlot: number,
+	lastSlot: number,
+	fromEnd: boolean?
+): number?
+	if fromEnd then
+		for slot = lastSlot, firstSlot, -1 do
+			if inventory.Contents[slot] == nil then
+				return slot
+			end
+		end
+	else
+		for slot = firstSlot, lastSlot do
+			if inventory.Contents[slot] == nil then
+				return slot
+			end
+		end
+	end
+	return nil
+end
+
 local function updateInventoryBasic(
 	inventory: Inventory,
 	itemType: string,
@@ -131,6 +154,37 @@ local function updateInventoryBasic(
 	return updatedInventory, existingItem.Slot
 end
 
+local function updateInventoryPreferMain(
+	inventory: Inventory,
+	itemType: string,
+	quantity: number
+): (Inventory?, number?)
+	local existingItem = findItem(inventory, itemType)
+	if existingItem ~= nil then
+		return updateInventoryBasic(inventory, itemType, quantity)
+	end
+	if quantity <= 0 or quantity > MAX_ITEM_QUANTITY then
+		return nil, nil
+	end
+
+	local mainInventoryStart = math.min(HOTBAR_SIZE, inventory.Size)
+	local emptySlot = findEmptySlotInRange(inventory, mainInventoryStart, inventory.Size - 1, true)
+	if emptySlot == nil and mainInventoryStart > 0 then
+		emptySlot = findEmptySlotInRange(inventory, 0, mainInventoryStart - 1, true)
+	end
+	if emptySlot == nil then
+		return nil, nil
+	end
+
+	local updatedInventory = cloneInventory(inventory)
+	updatedInventory.Contents[emptySlot] = {
+		Slot = emptySlot,
+		Type = itemType,
+		Quantity = quantity,
+	}
+	return updatedInventory, emptySlot
+end
+
 local function findBestItem(inventory: Inventory, score: (itemDefinition: ItemDefinition) -> number?): InventoryItem?
 	local bestItem: InventoryItem? = nil
 	local bestScore: number? = nil
@@ -164,8 +218,8 @@ local function updatePlayerInventory(inventory: Inventory, itemType: string, qua
 		local currentDefinition: ItemDefinition? = Items[currentItem.Type]
 		local currentScore = currentDefinition and score(currentDefinition) or nil
 		local newScore = score(itemDefinition)
-		if currentScore ~= nil and newScore ~= nil and currentScore > newScore then
-			return updateInventoryBasic(inventory, itemType, quantity, true)
+		if currentScore ~= nil and newScore ~= nil and newScore <= currentScore then
+			return updateInventoryPreferMain(inventory, itemType, quantity)
 		end
 
 		local replacedInventory = cloneInventory(inventory)
@@ -174,8 +228,11 @@ local function updatePlayerInventory(inventory: Inventory, itemType: string, qua
 			Type = itemType,
 			Quantity = quantity,
 		}
-		local movedInventory = updateInventoryBasic(replacedInventory, currentItem.Type, currentItem.Quantity, true)
-		return movedInventory or replacedInventory, currentItem.Slot
+		local movedInventory = updateInventoryPreferMain(replacedInventory, currentItem.Type, currentItem.Quantity)
+		if movedInventory == nil then
+			return nil, nil
+		end
+		return movedInventory, currentItem.Slot
 	end
 
 	if itemDefinition.Melee ~= nil then
@@ -189,9 +246,49 @@ local function updatePlayerInventory(inventory: Inventory, itemType: string, qua
 		end
 		return replaceItem(findBestItem(inventory, pickaxeScore), pickaxeScore)
 	elseif itemDefinition.Armour ~= nil then
-		return updateInventoryBasic(inventory, itemType, quantity, true)
+		return updateInventoryPreferMain(inventory, itemType, quantity)
 	end
 	return updateInventoryBasic(inventory, itemType, quantity)
+end
+
+local function addArmourFromChest(
+	inventory: Inventory,
+	equippedArmour: { [string]: string },
+	itemType: string,
+	quantity: number
+): (Inventory?, string?, string?)
+	local itemDefinition: ItemDefinition? = Items[itemType]
+	local armour = itemDefinition and itemDefinition.Armour or nil
+	if armour == nil then
+		return nil, nil, nil
+	end
+
+	local armourType = armour.ArmourType
+	local currentItemType = equippedArmour[armourType]
+	local currentDefinition: ItemDefinition? = if currentItemType then Items[currentItemType] else nil
+	local currentArmour = currentDefinition and currentDefinition.Armour or nil
+	local shouldEquip = currentArmour == nil or armour.DamageMitigation > currentArmour.DamageMitigation
+	if not shouldEquip then
+		local storedInventory = updateInventoryPreferMain(inventory, itemType, quantity)
+		return storedInventory, nil, nil
+	end
+
+	local updatedInventory = cloneInventory(inventory)
+	if currentItemType ~= nil then
+		local storedInventory = updateInventoryPreferMain(updatedInventory, currentItemType, 1)
+		if storedInventory == nil then
+			return nil, nil, nil
+		end
+		updatedInventory = storedInventory
+	end
+	if quantity > 1 then
+		local storedInventory = updateInventoryPreferMain(updatedInventory, itemType, quantity - 1)
+		if storedInventory == nil then
+			return nil, nil, nil
+		end
+		updatedInventory = storedInventory
+	end
+	return updatedInventory, armourType, itemType
 end
 
 local function serializeContents(contents: { [number]: InventoryItem }): { InventoryItem }
@@ -716,6 +813,11 @@ function InventoryService.transferChestItem(
 	local chestState = self:getChestState(chest)
 	local updatedPlayerInventory: Inventory?
 	local updatedChestInventory: Inventory?
+	local equippedArmourType: string?
+	local equippedArmourItemType: string?
+	local heldItemType = session.heldItemType
+	local heldItem = if heldItemType then findItem(session.inventory, heldItemType) else nil
+	local heldItemSlot = if heldItem then heldItem.Slot else nil
 	if quantity > 0 then
 		if self:getItemQuantity(player, itemType) < quantity then
 			return false
@@ -731,7 +833,13 @@ function InventoryService.transferChestItem(
 		if chestItem == nil or chestItem.Quantity < -quantity then
 			return false
 		end
-		updatedPlayerInventory = updatePlayerInventory(session.inventory, itemType, -quantity)
+		local itemDefinition: ItemDefinition = Items[itemType]
+		if itemDefinition.Armour ~= nil then
+			updatedPlayerInventory, equippedArmourType, equippedArmourItemType =
+				addArmourFromChest(session.inventory, session.equippedArmour, itemType, -quantity)
+		else
+			updatedPlayerInventory = updatePlayerInventory(session.inventory, itemType, -quantity)
+		end
 		if updatedPlayerInventory == nil then
 			self:notify(player, "Your inventory is full.")
 			return false
@@ -743,7 +851,27 @@ function InventoryService.transferChestItem(
 	end
 	session.inventory = updatedPlayerInventory
 	self.chests[chest] = updatedChestInventory
+	if equippedArmourType ~= nil and equippedArmourItemType ~= nil then
+		session.equippedArmour[equippedArmourType] = equippedArmourItemType
+		self:applyArmourVisual(player, equippedArmourType, equippedArmourItemType)
+	end
 	self:publishInventory(player)
+	if heldItemType ~= nil and heldItemSlot ~= nil then
+		local itemAtPreviousHeldSlot = updatedPlayerInventory.Contents[heldItemSlot]
+		if itemAtPreviousHeldSlot ~= nil then
+			self:setHeldItem(player, itemAtPreviousHeldSlot.Type)
+		elseif findItem(updatedPlayerInventory, heldItemType) == nil then
+			self:setHeldItem(player, nil)
+		else
+			self:setHeldItem(player, heldItemType)
+		end
+	elseif quantity < 0 then
+		local receivedItem = findItem(updatedPlayerInventory, itemType)
+		local itemDefinition: ItemDefinition = Items[itemType]
+		if itemDefinition.Melee ~= nil and receivedItem ~= nil and receivedItem.Slot < HOTBAR_SIZE then
+			self:setHeldItem(player, itemType)
+		end
+	end
 	self:broadcastChest(chest)
 	return true
 end

@@ -39,8 +39,35 @@ function RoduxController.constructor(self: RoduxController)
 	self.initialReplicatedEvent = AsyncEvent.new()
 	self.replicatedHistory = {}
 end
+
+local function normalizeInventoryPayload(payload)
+	if payload.type ~= "SetValue" or payload.Key ~= "Inventory" or type(payload.Value) ~= "table" then
+		return payload
+	end
+	local inventory = payload.Value
+	if type(inventory.Contents) ~= "table" then
+		return payload
+	end
+
+	local normalizedContents = {}
+	for key, item in inventory.Contents do
+		local slot = if type(key) == "number" then key else tonumber(key)
+		if slot ~= nil and slot % 1 == 0 then
+			normalizedContents[slot] = item
+		end
+	end
+	local normalizedInventory = table.clone(inventory)
+	setmetatable(normalizedInventory, nil)
+	normalizedInventory.Contents = normalizedContents
+	local normalizedPayload = table.clone(payload)
+	setmetatable(normalizedPayload, nil)
+	normalizedPayload.Value = normalizedInventory
+	return normalizedPayload
+end
+
 function RoduxController.onStart(self: RoduxController)
 	Events.SetValue:connect(function(payload)
+		payload = normalizeInventoryPayload(payload)
 		GlobalStore:dispatch(payload)
 		local shouldReplicate = payload.type == "SetValue"
 		if shouldReplicate then

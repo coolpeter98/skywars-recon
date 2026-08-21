@@ -2311,7 +2311,9 @@ serverDataFields.Settings = tInterface(serverSettingsDefinition)
 local serverDataType = tInterface(serverDataFields)
 local tInterface = t.interface
 local inventoryDefinition = {
-	["Contents"] = t.map(t.number, t.interface({
+	-- Roblox serializes sparse numeric table keys as strings across remotes.
+	-- RoduxController converts these wire keys back to slot numbers.
+	["Contents"] = t.map(t.union(t.number, t.string), t.interface({
 		["Slot"] = t.number,
 		["Type"] = t.string,
 		["Quantity"] = t.number
