@@ -20,39 +20,38 @@ local Events = RuntimeLib.import(script, script.Parent.Parent, "events").Events
 local PlaceUtil = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "place", "place-util").PlaceUtil
 local AsyncEvent = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "event", "async-event").AsyncEvent
 local RobloxImage = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "asset", "roblox", "roblox-image").RobloxImage
-
-local RaycastMode = {}
-local RaycastModeNames = setmetatable({}, {
-	["__index"] = RaycastMode
+local RaycastModeInverse = {}
+local RaycastMode = setmetatable({}, {
+	["__index"] = RaycastModeInverse
 })
-RaycastModeNames.SELECT = 0
-RaycastMode[0] = "SELECT"
-RaycastModeNames.PREVIEW = 1
-RaycastMode[1] = "PREVIEW"
+RaycastMode.SELECT = 0
+RaycastModeInverse[0] = "SELECT"
+RaycastMode.PREVIEW = 1
+RaycastModeInverse[1] = "PREVIEW"
 
-local AssistMode = {}
-local AssistModeNames = setmetatable({}, {
-	["__index"] = AssistMode
+local AssistModeInverse = {}
+local AssistMode = setmetatable({}, {
+	["__index"] = AssistModeInverse
 })
-AssistModeNames.Standard = 0
-AssistMode[0] = "Standard"
-AssistModeNames.AssistOnly = 1
-AssistMode[1] = "AssistOnly"
-AssistModeNames.StandardOnly = 2
-AssistMode[2] = "StandardOnly"
+AssistMode.Standard = 0
+AssistModeInverse[0] = "Standard"
+AssistMode.AssistOnly = 1
+AssistModeInverse[1] = "AssistOnly"
+AssistMode.StandardOnly = 2
+AssistModeInverse[2] = "StandardOnly"
 
-local RaycastType = {}
-local RaycastTypeNames = setmetatable({}, {
-	["__index"] = RaycastType
+local RaycastTypeInverse = {}
+local RaycastType = setmetatable({}, {
+	["__index"] = RaycastTypeInverse
 })
-RaycastTypeNames.Standard = 0
-RaycastType[0] = "Standard"
-RaycastTypeNames.VoidCast = 1
-RaycastType[1] = "VoidCast"
-RaycastTypeNames.PillarCast = 2
-RaycastType[2] = "PillarCast"
-RaycastTypeNames.Paused = 3
-RaycastType[3] = "Paused"
+RaycastType.Standard = 0
+RaycastTypeInverse[0] = "Standard"
+RaycastType.VoidCast = 1
+RaycastTypeInverse[1] = "VoidCast"
+RaycastType.PillarCast = 2
+RaycastTypeInverse[2] = "PillarCast"
+RaycastType.Paused = 3
+RaycastTypeInverse[3] = "Paused"
 
 type BlockRaycastController = {
 	hotbarController: any,

@@ -168,6 +168,43 @@ function CustomGameService.buildGameTeams(self, record: CustomGameRecord, adapte
 	return gameTeams
 end
 
+local function isInBuildConstraint(position: Vector3, constraint: PlaceholderMapService.BuildConstraint): boolean
+	local minimum = constraint.Minimum
+	local maximum = constraint.Maximum
+	return position.X >= minimum.X
+		and position.X <= maximum.X
+		and position.Y >= minimum.Y
+		and position.Y <= maximum.Y
+		and position.Z >= minimum.Z
+		and position.Z <= maximum.Z
+end
+
+function CustomGameService.getBuildConstraints(self): { PlaceholderMapService.BuildConstraint }
+	local record = self.record
+	local loadedMap = self.loadedMap
+	if
+		record == nil
+		or not record.InGame
+		or loadedMap == nil
+		or (self.roundState ~= "Countdown" and self.roundState ~= "InGame")
+	then
+		return {}
+	end
+	return loadedMap.BuildConstraints
+end
+
+function CustomGameService.isBlockPlacementAllowed(self, player: Player, position: Vector3): boolean
+	if player:GetAttribute("Alive") ~= true or player:GetAttribute("Spectating") == true then
+		return false
+	end
+	for _, constraint in self:getBuildConstraints() do
+		if constraint.Whitelist and isInBuildConstraint(position, constraint) then
+			return true
+		end
+	end
+	return false
+end
+
 function CustomGameService.replicatePlayer(self, player: Player)
 	local record = self.record
 	local adapter = self:getAdapter(record)
@@ -181,6 +218,7 @@ function CustomGameService.replicatePlayer(self, player: Player)
 	})
 	self.context.outbound:setValue(player, "GameSettings", settings)
 	self.context.outbound:setValue(player, "GameTeams", self:buildGameTeams(record, adapter))
+	self.context.outbound:setValue(player, "BuildConstraints", self:getBuildConstraints())
 	local aliveUserIds = {}
 	for _, candidate in Players:GetPlayers() do
 		if not record.InGame or candidate:GetAttribute("Alive") == true then
@@ -642,9 +680,7 @@ function CustomGameService.startMatch(self, player: Player)
 	end
 	local participants = Players:GetPlayers()
 	local userIds = self:getParticipantUserIds()
-	local assignments = if record.Settings.AllowTeamSelection
-		then adapter.sanitizeTeamAssignments(record.Settings.GameMode, userIds, record.TeamAssignments)
-		else adapter.assignBalancedTeams(record.Settings.GameMode, userIds, record.TeamAssignments)
+	local assignments = adapter.assignBalancedTeams(record.Settings.GameMode, userIds, record.TeamAssignments)
 	local updated = self:updateLocalRecord(function(currentRecord)
 		currentRecord.TeamAssignments = assignments
 		currentRecord.InGame = true

@@ -109,7 +109,7 @@ function PlayerSessions.bootstrap(self, player: Player)
 	self.sessions[player] = session
 
 	task.spawn(function()
-		for _, delaySeconds in BOOTSTRAP_RETRY_DELAYS do
+		for attemptIndex, delaySeconds in BOOTSTRAP_RETRY_DELAYS do
 			if delaySeconds > 0 then
 				task.wait(delaySeconds)
 			end
@@ -117,7 +117,7 @@ function PlayerSessions.bootstrap(self, player: Player)
 			if currentSession == nil or player.Parent ~= Players then
 				return
 			end
-			self.outbound:sendBootstrap(player, currentSession)
+			self.outbound:sendBootstrap(player, currentSession, attemptIndex == 1)
 		end
 	end)
 

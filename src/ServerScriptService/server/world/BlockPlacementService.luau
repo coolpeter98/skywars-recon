@@ -33,6 +33,7 @@ local MAXIMUM_PLACE_DISTANCE: number = BlockConstants.MAXIMUM_PLACE_RANGE * BLOC
 local PREDICTION_WAIT_TIMEOUT = 0.5
 local POSITION_TOLERANCE = 0.01
 local ROTATION_INCREMENT = 90
+local PLACED_BLOCK_TAG = "block:placed"
 
 local ADJACENT_OFFSETS = {
 	Vector3.new(-BLOCK_SIZE, 0, -BLOCK_SIZE),
@@ -187,6 +188,7 @@ local function createBlock(
 	block:SetAttribute(Attribute.PlacedByUserId, player.UserId)
 	block:SetAttribute(Attribute.PlacedItemType, placedItemType)
 	block:SetAttribute(Attribute.ResolvedBlockType, resolvedItemType)
+	CollectionService:AddTag(block, PLACED_BLOCK_TAG)
 	if blockDefinition.CollectionTag ~= nil then
 		CollectionService:AddTag(block, blockDefinition.CollectionTag)
 	end
@@ -214,6 +216,14 @@ function BlockPlacementService.reject(self, player: Player, predictionId: string
 	return false
 end
 
+function BlockPlacementService.isPlacementAllowedForServer(self, player: Player, position: Vector3): boolean
+	local runtimeContext = self.context.runtimeContext:get()
+	if runtimeContext.Role == "Private" then
+		return self.context.customGameService:isBlockPlacementAllowed(player, position)
+	end
+	return runtimeContext.Role == "Game"
+end
+
 function BlockPlacementService.placeBlock(
 	self,
 	player: Player,
@@ -231,6 +241,7 @@ function BlockPlacementService.placeBlock(
 	if
 		root == nil
 		or player:GetAttribute(Attribute.Spectating) == true
+		or not self:isPlacementAllowedForServer(player, position)
 		or (root.Position - position).Magnitude >= MAXIMUM_PLACE_DISTANCE
 		or not isGridAligned(position)
 		or normalizedRotation == nil

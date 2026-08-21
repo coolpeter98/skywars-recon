@@ -86,8 +86,10 @@ function Outbound.sendGameCurrency(self, player: Player, gameCurrency: { [string
 	self:setValue(player, "GameCurrency", gameCurrency)
 end
 
-function Outbound.sendBootstrap(self, player: Player, session: PlayerSession)
-	self.setValueRemote:FireClient(player, { type = "@@INIT" })
+function Outbound.sendBootstrap(self, player: Player, session: PlayerSession, resetStore: boolean?)
+	if resetStore then
+		self.setValueRemote:FireClient(player, { type = "@@INIT" })
+	end
 	self:sendProfile(player, session.profile)
 	self:sendParty(player, session.party)
 	self:sendFriends(player, session.friends, session.friendIds)

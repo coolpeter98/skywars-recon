@@ -7,7 +7,15 @@ local Workspace = game:GetService("Workspace")
 
 local ModeRegistry = require(script.Parent.modes.ModeRegistry)
 
+export type BuildConstraint = {
+	Type: "BoundingBox",
+	Minimum: Vector3,
+	Maximum: Vector3,
+	Whitelist: boolean,
+}
+
 export type LoadedMap = {
+	BuildConstraints: { BuildConstraint },
 	Model: Model,
 	SpawnPositions: { [string]: CFrame },
 	SpectatorCFrame: CFrame,
@@ -16,6 +24,13 @@ export type LoadedMap = {
 
 local MAP_ORIGIN = Vector3.new(0, 300, 0)
 local ACTIVE_MAP_NAME = "ActiveGameMap"
+local BLOCK_SIZE = 3
+local BUILD_HORIZONTAL_PADDING = 36
+local BUILD_DEPTH_BELOW_MAP = 60
+local BUILD_HEIGHT_ABOVE_MAP = 90
+local PLATFORM_BLOCK_NAME = "StoneBricks"
+local PLACED_BLOCK_TAG = "block:placed"
+local TEMPLATE_VERSION = 3
 
 local PlaceholderMapService = {}
 PlaceholderMapService.__index = PlaceholderMapService
@@ -79,7 +94,40 @@ local function createChest(name: string, position: Vector3, parent: Instance, ce
 end
 
 local function snap(value: number): number
-	return math.round(value / 3) * 3
+	return math.round(value / BLOCK_SIZE) * BLOCK_SIZE
+end
+
+local function getGridAlignedPlatformSize(configuredSize: Vector3): Vector3
+	local function getAxisSize(axisSize: number): number
+		local cellCount = math.max(1, math.ceil(axisSize / BLOCK_SIZE))
+		if cellCount % 2 == 0 then
+			cellCount += 1
+		end
+		return cellCount * BLOCK_SIZE
+	end
+	return Vector3.new(getAxisSize(configuredSize.X), BLOCK_SIZE, getAxisSize(configuredSize.Z))
+end
+
+local function getBuildConstraints(activeMap: Model): { BuildConstraint }
+	local boundsCFrame, boundsSize = activeMap:GetBoundingBox()
+	local halfSize = boundsSize / 2
+	local boundsCenter = boundsCFrame.Position
+	return {
+		{
+			Type = "BoundingBox",
+			Minimum = Vector3.new(
+				boundsCenter.X - halfSize.X - BUILD_HORIZONTAL_PADDING,
+				MAP_ORIGIN.Y - BUILD_DEPTH_BELOW_MAP,
+				boundsCenter.Z - halfSize.Z - BUILD_HORIZONTAL_PADDING
+			),
+			Maximum = Vector3.new(
+				boundsCenter.X + halfSize.X + BUILD_HORIZONTAL_PADDING,
+				MAP_ORIGIN.Y + BUILD_HEIGHT_ABOVE_MAP,
+				boundsCenter.Z + halfSize.Z + BUILD_HORIZONTAL_PADDING
+			),
+			Whitelist = true,
+		},
+	}
 end
 
 local function buildTemplate(gameMode: string, destination: Instance): Model
@@ -94,11 +142,18 @@ local function buildTemplate(gameMode: string, destination: Instance): Model
 	template.Name = "Template"
 	template:SetAttribute("GameMode", gameMode)
 	template:SetAttribute("Placeholder", true)
+	template:SetAttribute("TemplateVersion", TEMPLATE_VERSION)
 
 	local centerIsland = Instance.new("Model")
 	centerIsland.Name = "CenterIsland"
 	centerIsland.Parent = template
-	createPart("Platform", config.CenterSize, CFrame.new(MAP_ORIGIN), Color3.fromRGB(111, 135, 86), centerIsland)
+	createPart(
+		PLATFORM_BLOCK_NAME,
+		getGridAlignedPlatformSize(config.CenterSize),
+		CFrame.new(MAP_ORIGIN),
+		Color3.fromRGB(111, 135, 86),
+		centerIsland
+	)
 	for index = 1, 4 do
 		local angle = (index - 1) * math.pi / 2
 		createChest(
@@ -120,7 +175,13 @@ local function buildTemplate(gameMode: string, destination: Instance): Model
 		island.Name = teamId
 		island:SetAttribute("TeamId", teamId)
 		island.Parent = teamIslands
-		createPart("Platform", config.IslandSize, CFrame.new(islandPosition), Color3.fromRGB(101, 125, 76), island)
+		createPart(
+			PLATFORM_BLOCK_NAME,
+			getGridAlignedPlatformSize(config.IslandSize),
+			CFrame.new(islandPosition),
+			Color3.fromRGB(101, 125, 76),
+			island
+		)
 		local spawn = createPart(
 			"Spawn",
 			Vector3.new(6, 1, 6),
@@ -130,6 +191,8 @@ local function buildTemplate(gameMode: string, destination: Instance): Model
 		)
 		spawn.Transparency = 1
 		spawn.CanCollide = false
+		spawn.CanQuery = false
+		spawn.CanTouch = false
 		for chestIndex = 1, config.ChestsPerIsland do
 			local lateralOffset = (chestIndex - (config.ChestsPerIsland + 1) / 2) * 6
 			local towardCenter = (MAP_ORIGIN - islandPosition).Unit
@@ -158,8 +221,11 @@ function PlaceholderMapService.ensureTemplate(self, gameMode: string): Model
 	local modeFolder = ServerStorage.Maps.SkyWars:FindFirstChild(adapter.getMapConfigFolder(gameMode))
 	assert(modeFolder ~= nil, "Missing placeholder map folder for " .. gameMode)
 	local template = modeFolder:FindFirstChild("Template")
-	if template and template:IsA("Model") then
+	if template and template:IsA("Model") and template:GetAttribute("TemplateVersion") == TEMPLATE_VERSION then
 		return template
+	end
+	if template ~= nil then
+		template:Destroy()
 	end
 	return buildTemplate(gameMode, modeFolder)
 end
@@ -195,6 +261,7 @@ function PlaceholderMapService.load(self, gameMode: string, selectedMapName: str
 		end
 	end
 	return {
+		BuildConstraints = getBuildConstraints(activeMap),
 		Model = activeMap,
 		SpawnPositions = spawnPositions,
 		SpectatorCFrame = CFrame.lookAt(MAP_ORIGIN + Vector3.new(0, 12, 18), MAP_ORIGIN),
@@ -208,6 +275,13 @@ function PlaceholderMapService.unload(self)
 		self.activeMap = nil
 	end
 	local blockContainer = Workspace:FindFirstChild("BlockContainer")
+	if blockContainer ~= nil then
+		for _, placedBlock in CollectionService:GetTagged(PLACED_BLOCK_TAG) do
+			if placedBlock:IsDescendantOf(blockContainer) then
+				placedBlock:Destroy()
+			end
+		end
+	end
 	local staleMap = blockContainer and blockContainer:FindFirstChild(ACTIVE_MAP_NAME)
 	if staleMap ~= nil then
 		staleMap:Destroy()
