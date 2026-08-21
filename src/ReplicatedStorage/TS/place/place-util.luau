@@ -451,29 +451,30 @@ function PlaceUtil.getGameId(queueId: number?): number
 	return -1
 end
 function PlaceUtil.isProduction(): boolean
-	for _, placeGroup in placeGroups do
-		if placeGroup.PlaceGroupType == PlaceGroupType.Game then
-			if placeGroup.Lobby.PlaceId == game.PlaceId then
-				return placeGroup.Production
-			end
-			local count = 0
-			local matchingGames = {}
-			for index, place in placeGroup.Games do
-				local _ = index - 1
-				if place.PlaceId == game.PlaceId == true then
-					count = count + 1
-					matchingGames[count] = place
-				end
-			end
-			local lastIndex = #matchingGames
-			local lastGame = matchingGames[lastIndex]
-			matchingGames[lastIndex] = nil
-			if lastGame then
-				return placeGroup.Production
-			end
-		end
-	end
-	return false
+-- 	for _, placeGroup in placeGroups do
+-- 		if placeGroup.PlaceGroupType == PlaceGroupType.Game then
+-- 			if placeGroup.Lobby.PlaceId == game.PlaceId then
+-- 				return placeGroup.Production
+-- 			end
+-- 			local count = 0
+-- 			local matchingGames = {}
+-- 			for index, place in placeGroup.Games do
+-- 				local _ = index - 1
+-- 				if place.PlaceId == game.PlaceId == true then
+-- 					count = count + 1
+-- 					matchingGames[count] = place
+-- 				end
+-- 			end
+-- 			local lastIndex = #matchingGames
+-- 			local lastGame = matchingGames[lastIndex]
+-- 			matchingGames[lastIndex] = nil
+-- 			if lastGame then
+-- 				return placeGroup.Production
+-- 			end
+-- 		end
+-- 	end
+--	return false
+	return true
 end
 function PlaceUtil.isGamePlace(placeId: number?): boolean
 	for _, placeGroup in placeGroups do
