@@ -69,10 +69,6 @@ function LifecycleController.onStart(self: LifecycleController)
 			self.lobbyStartListeners[id] = dependency
 		end
 	end
-	if PlaceUtil.isLobbyServer() then
-		self:fireLobbyStart()
-		return nil
-	end
 	if PlaceUtil.isGameServer() then
 		self:fireGameStart()
 		return nil
@@ -82,7 +78,9 @@ function LifecycleController.onStart(self: LifecycleController)
 		customGame = customGame.ServerData.InGame
 	end
 	local inGame = customGame == true
-	if not inGame then
+	if inGame then
+		self:fireGameStart()
+	else
 		self:fireLobbyStart()
 	end
 	GlobalStoreChanged("CustomGame", function(customGame)

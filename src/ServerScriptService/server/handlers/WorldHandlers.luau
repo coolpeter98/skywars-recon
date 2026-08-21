@@ -1,20 +1,16 @@
 --!strict
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-
 local Validation = require(script.Parent.Parent.Validation)
-local Items = require(ReplicatedStorage.TS.item.item).Items
-
-local BLOCK_SIZE = 3
-local MAXIMUM_PLACE_DISTANCE = 18
+local BlockPlacementService = require(script.Parent.Parent.world.BlockPlacementService)
 
 local WorldHandlers = {}
 WorldHandlers.__index = WorldHandlers
 
 function WorldHandlers.new(context)
-	return setmetatable({ context = context }, WorldHandlers)
+	return setmetatable({
+		context = context,
+		blockPlacementService = BlockPlacementService.new(context),
+	}, WorldHandlers)
 end
 
 function WorldHandlers.equipItem(self, player: Player, itemType: string)
@@ -37,118 +33,13 @@ function WorldHandlers.itemPickup(self, player: Player, itemType: string, quanti
 	self.context.inventoryService:registerPrediction(player, itemType, quantity, predictionId)
 end
 
-local function resolveBlockDefinition(player: Player, itemType: string)
-	local itemDefinition = Items[itemType]
-	if itemDefinition and itemDefinition.Rewrite then
-		local teamId = player:GetAttribute("TeamId")
-		local teamName = if type(teamId) == "string" and teamId ~= "" then teamId else "White"
-		itemDefinition = Items[string.gsub(itemDefinition.Rewrite.Type, "{TeamId}", teamName)]
-	end
-	return itemDefinition
-end
-
-local function hasBlockAtPosition(blockContainer: Instance, position: Vector3): boolean
-	for _, child in blockContainer:GetDescendants() do
-		if child:IsA("BasePart") and (child.Position - position).Magnitude < 0.1 then
-			return true
-		end
-	end
-	return false
-end
-
-local function hasAdjacentBlock(blockContainer: Instance, position: Vector3): boolean
-	for _, offset in
-		{
-			Vector3.new(BLOCK_SIZE, 0, 0),
-			Vector3.new(-BLOCK_SIZE, 0, 0),
-			Vector3.new(0, BLOCK_SIZE, 0),
-			Vector3.new(0, -BLOCK_SIZE, 0),
-			Vector3.new(0, 0, BLOCK_SIZE),
-			Vector3.new(0, 0, -BLOCK_SIZE),
-		}
-	do
-		for _, part in Workspace:GetPartBoundsInBox(CFrame.new(position + offset), Vector3.new(2.9, 2.9, 2.9)) do
-			if part:IsDescendantOf(blockContainer) then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-local function intersectsCharacter(position: Vector3): boolean
-	for _, part in Workspace:GetPartBoundsInBox(CFrame.new(position), Vector3.new(2.9, 2.9, 2.9)) do
-		local character = part:FindFirstAncestorOfClass("Model")
-		if character and Players:GetPlayerFromCharacter(character) ~= nil then
-			if part.Name == "Head" or (part.Name == "UpperTorso" and part.Position.Y < position.Y) then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-local function roundVector(vector: Vector3): Vector3
-	return Vector3.new(math.round(vector.X), math.round(vector.Y), math.round(vector.Z))
-end
-
 function WorldHandlers.placeBlock(self, player: Player, position: Vector3, rotation: number, predictionId: string)
-	local session = self.context.playerSessions:require(player)
-	local deadline = os.clock() + 0.5
-	while session.pendingInventoryPredictions[predictionId] == nil and os.clock() < deadline do
-		task.wait()
-	end
-	local prediction = session.pendingInventoryPredictions[predictionId]
-	if prediction == nil then
-		self.context.outbound:fire("BlockRemoved", player, position)
-		return
-	end
-	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	local itemDefinition = resolveBlockDefinition(player, prediction.itemType)
-	local scaledPosition = position / BLOCK_SIZE
-	local positionIsSnapped = (scaledPosition - roundVector(scaledPosition)).Magnitude < 0.01
-	local validRotation = rotation % 90 == 0 and math.abs(rotation) <= 360
-	if
-		root == nil
-		or not root:IsA("BasePart")
-		or (root.Position - position).Magnitude >= MAXIMUM_PLACE_DISTANCE
-		or not positionIsSnapped
-		or not validRotation
-		or itemDefinition == nil
-		or itemDefinition.Block == nil
-	then
+	local success, message = pcall(function()
+		self.blockPlacementService:placeBlock(player, position, rotation, predictionId)
+	end)
+	if not success then
 		self.context.inventoryService:rejectPrediction(player, predictionId)
-		self.context.outbound:fire("BlockRemoved", player, position)
-		return
-	end
-
-	local blockContainer = Workspace:FindFirstChild("BlockContainer")
-	if blockContainer == nil then
-		blockContainer = Instance.new("Folder")
-		blockContainer.Name = "BlockContainer"
-		blockContainer.Parent = Workspace
-	end
-	if
-		hasBlockAtPosition(blockContainer, position)
-		or not hasAdjacentBlock(blockContainer, position)
-		or intersectsCharacter(position)
-	then
-		self.context.inventoryService:rejectPrediction(player, predictionId)
-		self.context.outbound:fire("BlockRemoved", player, position)
-		return
-	end
-
-	local block = itemDefinition.Block.Ref:Clone()
-	block.Position = position
-	block.Anchored = true
-	if itemDefinition.Block.Rotation then
-		block.Orientation = Vector3.new(0, rotation, 0)
-	end
-	block:SetAttribute("Shooter", player.UserId)
-	block.Parent = blockContainer
-	local committed = self.context.inventoryService:commitPrediction(player, predictionId)
-	if not committed then
-		block:Destroy()
+		warn(("[BlockPlacement] Failed for %s (%d): %s"):format(player.Name, player.UserId, tostring(message)))
 	end
 	self.context.outbound:fire("BlockRemoved", player, position)
 end

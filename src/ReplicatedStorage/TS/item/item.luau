@@ -739,7 +739,10 @@ __set_list(itemDefinitions, 33, {{
 	["Name"] = "Tornado"
 }, fishingRodDefinition, fishDefinition})
 __set_list(itemDefinitions, 49, {{
-	["Name"] = "Ice"
+	["Name"] = "Ice",
+	["Block"] = {
+		["BreakTime"] = 0.5
+	}
 }})
 local initialItemCount = #itemDefinitions
 local powerUpValues = ObjectUtils.values(PowerUps)

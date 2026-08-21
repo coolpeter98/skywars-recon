@@ -14,6 +14,7 @@ local Players: Players = RuntimeLib.import(script, game:GetService("ReplicatedSt
 local SidebarScreen = RuntimeLib.import(script, script.Parent.Parent, "ui", "sidebar", "sidebar-screen").SidebarScreen
 local Attribute = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "attribute").Attribute
 local GameConstants = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "game", "game-constants").GameConstants
+local PlaceUtil = RuntimeLib.import(script, game:GetService("ReplicatedStorage"), "TS", "place", "place-util").PlaceUtil
 
 type LobbyController = {
 	screenController: any,
@@ -58,13 +59,18 @@ end
 
 function LobbyController.onGameStart(self: LobbyController, maid)
 	self.screenController:close(LobbyScreen)
-	if Flamework.resolveDependency("1LA"):isSpectating() and not (self.screenController:isHealthBarDisabled() and ScreenUtil.isMobile()) then
+	self.screenController:close(SidebarScreen)
+	local function canOpenGameDock()
+		return not PlaceUtil.isPrivateServer()
+			and not (self.screenController:isHealthBarDisabled() and ScreenUtil.isMobile())
+	end
+	if Flamework.resolveDependency("1LA"):isSpectating() and canOpenGameDock() then
 		self.screenController:open(LobbyScreen, {
 			["InLobby"] = false
 		})
 	end
 	maid:GiveTask(Events.Spectate:connect(function()
-		if not (self.screenController:isHealthBarDisabled() and ScreenUtil.isMobile()) then
+		if canOpenGameDock() then
 			self.screenController:open(LobbyScreen, {
 				["InLobby"] = false
 			})
@@ -79,7 +85,7 @@ function LobbyController.onGameStart(self: LobbyController, maid)
 		if playerEliminatedData.Player ~= Players.LocalPlayer or GameConstants.NEW_WIN_EFFECT_ENABLED and playerEliminatedData.GameEnding then
 			return nil
 		end
-		if not (self.screenController:isHealthBarDisabled() and ScreenUtil.isMobile()) then
+		if canOpenGameDock() then
 			self.screenController:open(LobbyScreen, {
 				["InLobby"] = false
 			})
@@ -87,7 +93,7 @@ function LobbyController.onGameStart(self: LobbyController, maid)
 	end))
 	if GameConstants.NEW_WIN_EFFECT_ENABLED then
 		maid:GiveTask(Flamework.resolveDependency("XNg").WinEffectEnded:bind(function()
-			if not (self.screenController:isHealthBarDisabled() and ScreenUtil.isMobile()) then
+			if canOpenGameDock() then
 				self.screenController:open(LobbyScreen, {
 					["InLobby"] = false
 				})
@@ -95,7 +101,7 @@ function LobbyController.onGameStart(self: LobbyController, maid)
 		end))
 	else
 		maid:GiveTask(Flamework.resolveDependency("rB8").GameEnded:bind(function()
-			if not (self.screenController:isHealthBarDisabled() and ScreenUtil.isMobile()) then
+			if canOpenGameDock() then
 				self.screenController:open(LobbyScreen, {
 					["InLobby"] = false
 				})
@@ -126,7 +132,11 @@ function LobbyController.onGameStart(self: LobbyController, maid)
 		else
 			shouldOpen = spectating or gameState == GameState.Ended
 		end
-		if (screenHandler.Options.DisableDock or ScreenUtil.isMobile() and screenHandler.Options.DisableHealthBar) and shouldOpen then
+		if
+			(screenHandler.Options.DisableDock or ScreenUtil.isMobile() and screenHandler.Options.DisableHealthBar)
+			and shouldOpen
+			and canOpenGameDock()
+		then
 			self.screenController:open(LobbyScreen, {
 				["InLobby"] = false
 			})

@@ -8,6 +8,8 @@ local FunctionRouter = require(script.Parent.FunctionRouter)
 local InventoryService = require(script.Parent.inventory.InventoryService)
 local MatchmakingService = require(script.Parent.matchmaking.MatchmakingService)
 local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextService)
+local PartyService = require(script.Parent.party.PartyService)
+local CustomGameService = require(script.Parent.custom.CustomGameService)
 
 local SessionHandlers = require(script.Parent.handlers.SessionHandlers)
 local MatchmakingHandlers = require(script.Parent.handlers.MatchmakingHandlers)
@@ -38,6 +40,10 @@ function Runtime.new()
 		playerSessions = playerSessions,
 		runtimeContext = runtimeContext,
 	}
+	local partyService = PartyService.new(context)
+	context.partyService = partyService
+	local customGameService = CustomGameService.new(context)
+	context.customGameService = customGameService
 	local matchmakingService = MatchmakingService.new(context)
 	context.matchmakingService = matchmakingService
 	local inventoryService = InventoryService.new(context)
@@ -55,6 +61,8 @@ function Runtime.new()
 	local functionRoutes = CustomServersService.new(context):getRoutes()
 	return setmetatable({
 		playerSessions = playerSessions,
+		partyService = partyService,
+		customGameService = customGameService,
 		inventoryService = inventoryService,
 		matchmakingService = matchmakingService,
 		eventRouter = EventRouter.new(remoteRegistry, playerSessions, eventRoutes),
@@ -67,6 +75,8 @@ function Runtime.start(self)
 	if self.started then
 		return
 	end
+	self.partyService:start()
+	self.customGameService:start()
 	self.matchmakingService:start()
 	self.inventoryService:start()
 	self.eventRouter:start()
@@ -79,6 +89,8 @@ function Runtime.stop(self)
 	if not self.started then
 		return
 	end
+	self.customGameService:stop()
+	self.partyService:stop()
 	self.matchmakingService:stop()
 	self.inventoryService:stop()
 	self.playerSessions:stop()

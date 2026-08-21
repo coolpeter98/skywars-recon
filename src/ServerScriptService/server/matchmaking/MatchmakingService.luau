@@ -359,6 +359,9 @@ function MatchmakingService.configureReservedServer(self)
 	if game.PrivateServerId == "" or game.PrivateServerOwnerId ~= 0 then
 		return
 	end
+	if self.context.runtimeContext:get().Role == "Private" then
+		return
+	end
 	local matchRecord = self.store:getMatchForPrivateServer(game.PrivateServerId)
 	if matchRecord == nil then
 		warn(("[Matchmaking] Reserved server %s has no active match record."):format(game.PrivateServerId))

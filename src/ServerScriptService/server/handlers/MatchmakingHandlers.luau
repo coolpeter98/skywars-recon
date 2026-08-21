@@ -12,8 +12,12 @@ end
 function MatchmakingHandlers.joinQueue(self, player: Player, joining: boolean, gameMode: string?)
 	self.context.matchmakingService:joinQueue(player, joining, gameMode)
 end
-function MatchmakingHandlers.requestSpectate(self, player: Player) end
-function MatchmakingHandlers.spectateTargetChanged(self, player: Player, target: Player) end
+function MatchmakingHandlers.requestSpectate(self, player: Player)
+	self.context.customGameService:requestSpectate(player)
+end
+function MatchmakingHandlers.spectateTargetChanged(self, player: Player, target: Player)
+	self.context.customGameService:spectateTargetChanged(player, target)
+end
 function MatchmakingHandlers.teleportToHub(self, player: Player)
 	self.context.matchmakingService:teleportToLobby(player)
 end

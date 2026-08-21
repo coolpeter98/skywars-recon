@@ -63,6 +63,16 @@ function RuntimeContextService.setGame(self, gameMode: string, queueId: string, 
 	})
 end
 
+function RuntimeContextService.setPrivate(self, gameMode: string, customGameId: string)
+	self:apply({
+		Version = RuntimeContext.Version,
+		Role = RuntimeContext.Role.Private,
+		GameMode = gameMode,
+		QueueId = "private",
+		MatchId = customGameId,
+	})
+end
+
 function RuntimeContextService.configurePlayer(self, player: Player)
 	local joinData = player:GetJoinData()
 	local teleportData = joinData.TeleportData
@@ -76,12 +86,22 @@ function RuntimeContextService.configurePlayer(self, player: Player)
 	local modeConfig = type(incomingContext.GameMode) == "string"
 			and MatchmakingConfig.getMode(incomingContext.GameMode)
 		or nil
-	if
-		incomingContext.Role ~= RuntimeContext.Role.Game
-		or modeConfig == nil
-		or type(incomingContext.MatchId) ~= "string"
-	then
+	if modeConfig == nil or type(incomingContext.MatchId) ~= "string" then
 		warn(("[RuntimeContext] Rejected invalid teleport context from %s (%d)"):format(player.Name, player.UserId))
+		return
+	end
+	if incomingContext.Role == RuntimeContext.Role.Private then
+		if self.context ~= nil and self.context.Role == RuntimeContext.Role.Private then
+			if self.context.MatchId ~= incomingContext.MatchId or self.context.GameMode ~= modeConfig.GameMode then
+				player:Kick("This private server belongs to a different custom game.")
+				return
+			end
+		end
+		self:setPrivate(modeConfig.GameMode, incomingContext.MatchId)
+		return
+	end
+	if incomingContext.Role ~= RuntimeContext.Role.Game then
+		warn(("[RuntimeContext] Rejected invalid teleport role from %s (%d)"):format(player.Name, player.UserId))
 		return
 	end
 	local context: GameContext = {
@@ -111,6 +131,21 @@ function RuntimeContextService.createGameTeleportData(self, gameMode: string, ma
 			Role = RuntimeContext.Role.Game,
 			GameMode = gameMode,
 			MatchId = matchId,
+		},
+	}
+end
+
+function RuntimeContextService.createPrivateTeleportData(
+	self,
+	gameMode: string,
+	customGameId: string
+): { [string]: any }
+	return {
+		[RuntimeContext.TeleportDataKey] = {
+			Version = RuntimeContext.Version,
+			Role = RuntimeContext.Role.Private,
+			GameMode = gameMode,
+			MatchId = customGameId,
 		},
 	}
 end

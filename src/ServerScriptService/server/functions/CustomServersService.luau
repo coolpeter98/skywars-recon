@@ -28,7 +28,7 @@ function CustomServersService.new(context)
 end
 
 function CustomServersService.getCustomServers(self, player: Player): { ServerListEntry }
-	return {}
+	return self.context.customGameService:listPublicServers(player)
 end
 
 function CustomServersService.getRoutes(self)

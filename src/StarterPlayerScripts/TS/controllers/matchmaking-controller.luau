@@ -214,6 +214,9 @@ function MatchmakingController.canQueue(_)
 end
 
 function MatchmakingController.joinQueueIn(self, seconds: number)
+	if PlaceUtil.isPrivateServer() then
+		return nil
+	end
 	if PlaceUtil.getGameMode() == GameMode.DuelsSolo or PlaceUtil.getGameMode() == GameMode.DuelsDuos then
 		return nil
 	end

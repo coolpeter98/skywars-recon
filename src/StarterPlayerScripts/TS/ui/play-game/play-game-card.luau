@@ -125,6 +125,8 @@ return {
 			Radius = 10,
 		})), React.createElement(CornerRadius, {
 			Radius = 20,
-		})))
+		})), React.createElement(CornerRadius, {
+			Radius = 20,
+		}))
 	end,
 }

@@ -9,36 +9,39 @@ function PrivateSessionHandlers.new(context)
 	return setmetatable({ context = context }, PrivateSessionHandlers)
 end
 
-function PrivateSessionHandlers.createPrivateServer(self, player: Player, privacy: string) end
-function PrivateSessionHandlers.joinPrivateServer(self, player: Player, joinCode: string) end
-function PrivateSessionHandlers.startPrivateMatch(self, player: Player) end
-function PrivateSessionHandlers.setServerName(self, player: Player, serverName: string) end
-function PrivateSessionHandlers.setGameMode(self, player: Player, gameMode: string) end
-function PrivateSessionHandlers.setAllowTeamSelection(self, player: Player, allowTeamSelection: boolean) end
-function PrivateSessionHandlers.setPrivacy(self, player: Player, privacy: string) end
-function PrivateSessionHandlers.setMap(self, player: Player, mapName: string) end
-function PrivateSessionHandlers.setPlayerBan(
-	self,
-	player: Player,
-	userId: number,
-	displayName: string,
-	banned: boolean
-)
+function PrivateSessionHandlers.createPrivateServer(self, player: Player, privacy: string)
+	self.context.customGameService:createServer(player, privacy)
 end
-function PrivateSessionHandlers.setPlayerTeam(self, player: Player, userId: number, teamId: string?) end
+function PrivateSessionHandlers.joinPrivateServer(self, player: Player, joinCode: string)
+	self.context.customGameService:joinServer(player, joinCode)
+end
+function PrivateSessionHandlers.startPrivateMatch(self, player: Player)
+	self.context.customGameService:startMatch(player)
+end
+function PrivateSessionHandlers.setServerName(self, player: Player, serverName: string)
+	self.context.customGameService:setServerName(player, serverName)
+end
+function PrivateSessionHandlers.setGameMode(self, player: Player, gameMode: string)
+	self.context.customGameService:setGameMode(player, gameMode)
+end
+function PrivateSessionHandlers.setAllowTeamSelection(self, player: Player, allowTeamSelection: boolean)
+	self.context.customGameService:setAllowTeamSelection(player, allowTeamSelection)
+end
+function PrivateSessionHandlers.setPrivacy(self, player: Player, privacy: string)
+	self.context.customGameService:setPrivacy(player, privacy)
+end
+function PrivateSessionHandlers.setMap(self, player: Player, mapName: string)
+	self.context.customGameService:setMap(player, mapName)
+end
+function PrivateSessionHandlers.setPlayerBan(self, player: Player, userId: number, displayName: string, banned: boolean)
+	self.context.customGameService:setPlayerBan(player, userId, displayName, banned)
+end
+function PrivateSessionHandlers.setPlayerTeam(self, player: Player, userId: number, teamId: string?)
+	self.context.customGameService:setPlayerTeam(player, userId, teamId)
+end
 
 function PrivateSessionHandlers.getRoutes(self)
 	local privacy = Validation.literal({ "Public", "Private" })
-	local gameMode = Validation.literal({
-		"SkyWarsSolo",
-		"SkyWarsDuos",
-		"SkyWarsTrios",
-		"SkyWarsQuads",
-		"SkyWarsOctos",
-		"DuelsSolo",
-		"DuelsDuos",
-		"EggWarsQuads",
-	})
 	return {
 		{
 			Name = "CreatePrivateServer",
@@ -70,7 +73,7 @@ function PrivateSessionHandlers.getRoutes(self)
 		},
 		{
 			Name = "SetPrivateGameMode",
-			Validate = Validation.tuple({ gameMode }),
+			Validate = Validation.tuple({ Validation.nonEmptyString }),
 			Handle = function(player, arguments)
 				self:setGameMode(player, arguments[1])
 			end,

@@ -9,11 +9,21 @@ function PartyHandlers.new(context)
 	return setmetatable({ context = context }, PartyHandlers)
 end
 
-function PartyHandlers.invitePlayer(self, player: Player, invitedPlayer: Player, isOffline: boolean) end
-function PartyHandlers.promotePlayer(self, player: Player, promotedPlayer: Player) end
-function PartyHandlers.removePlayer(self, player: Player, userId: number) end
-function PartyHandlers.leaveParty(self, player: Player) end
-function PartyHandlers.respondToInvite(self, player: Player, inviteId: string, partyId: string, accepted: boolean) end
+function PartyHandlers.invitePlayer(self, player: Player, invitedPlayer: Player, isOffline: boolean)
+	self.context.partyService:invite(player, invitedPlayer, isOffline)
+end
+function PartyHandlers.promotePlayer(self, player: Player, promotedPlayer: Player)
+	self.context.partyService:promote(player, promotedPlayer)
+end
+function PartyHandlers.removePlayer(self, player: Player, userId: number)
+	self.context.partyService:remove(player, userId)
+end
+function PartyHandlers.leaveParty(self, player: Player)
+	self.context.partyService:leave(player)
+end
+function PartyHandlers.respondToInvite(self, player: Player, inviteId: string, partyId: string, accepted: boolean)
+	self.context.partyService:respond(player, inviteId, partyId, accepted)
+end
 
 function PartyHandlers.getRoutes(self)
 	return {

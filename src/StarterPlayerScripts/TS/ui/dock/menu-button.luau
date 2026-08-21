@@ -176,24 +176,24 @@ return {
 						["Size"] = UDim2.fromOffset(70, 70),
 						["Image"] = props.Image,
 						["DropShadow"] = Vector2.new(0, 3),
-					}),
-					React.createElement(Text, {
-						["key"] = "Text",
-						["AnchorPoint"] = nil,
-						["Position"] = nil,
-						["Text"] = nil,
-						["Bold"] = true,
-						["TextColor3"] = nil,
-						["TextSize"] = 20,
-						["AnchorPoint"] = Vector2.new(0.5, 1),
-						["Position"] = UDim2.new(0.5, 0, 1, -10),
-						["Text"] = props.Text,
-						["TextColor3"] = backgroundColor.Primary,
-					}),
-					React.createElement(CornerRadius, {
-						["Radius"] = 30,
 					})
-				)
+				),
+				React.createElement(Text, {
+					["key"] = "Text",
+					["AnchorPoint"] = nil,
+					["Position"] = nil,
+					["Text"] = nil,
+					["Bold"] = true,
+					["TextColor3"] = nil,
+					["TextSize"] = 20,
+					["AnchorPoint"] = Vector2.new(0.5, 1),
+					["Position"] = UDim2.new(0.5, 0, 1, -10),
+					["Text"] = props.Text,
+					["TextColor3"] = backgroundColor.Primary,
+				}),
+				React.createElement(CornerRadius, {
+					["Radius"] = 30,
+				})
 			)
 		)
 	end,
