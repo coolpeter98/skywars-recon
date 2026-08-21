@@ -208,6 +208,7 @@ The client was brought from "hangs at Flamework boot" to a fully interactable lo
 - **Kills:** `CustomGameService.eliminatePlayer` now takes a `killer` and publishes both `PlayerEliminated` (spectating/round end, with killer) and `PlayerKilled` (kill feed) for every damage type; the victim ragdolls without entering the auto-respawn cycle (`Dead` state disabled + Physics). Bow hits apply `Arrow.Projectile.Damage` with the arrow's travel direction as knockback.
 - **Untouched:** the client was only *read* (events.luau schema, query-util raycast whitelists, health/armour/velocity controllers, melee-controller, kill-feed UI) to derive the contract; no client file was modified.
 - **Test-harness gotcha:** the Studio MCP `execute_luau` tool runs scripts through the Assistant's sandbox, which silently removes instances those scripts create (parts vanish with `Parent = nil`, no `Destroying`) — never use it to judge whether server-created parts persist; verify with a real Script instead.
+- **Real game audio:** all 92 sound IDs in `ReplicatedStorage/TS/asset/roblox/roblox-sound.luau` were replaced with user-owned re-uploads (old→new map in `sound-id-replacements.json`; name/id/file references in `sound-asset-names.json`; dumped files under `tools/sounds/mapped/`). The original universe's audio is unauthorized in local/unpublished places, so this swap is what makes combat/UI/music audio work in Studio. Animations and image assets still use the original IDs and remain silent/broken locally.
 
 ---
 
@@ -220,7 +221,7 @@ The client was brought from "hangs at Flamework boot" to a fully interactable lo
   - **Domain services:** matchmaking, session plumbing, inventory, combat, parties, and SkyWars private-session rounds are present. Persistence, developer-product purchases, combat power-ups/FX, full public-match rounds/maps, team upgrades, and non-SkyWars custom modes remain incomplete extension points (per §3.8 priority list).
   - Runtime testing loop: Rojo 7.7.0 occasionally crashes on file replacement (see §8); when Studio's Rojo plugin is disconnected, sync files through the MCP HTTP bridge instead.
 - **Known behavioral quirk preserved intentionally:** `AwaitHumanoid` in `StarterPlayerScripts/TS/util/util.luau` has a duplicated nil-check from the decompile — kept byte-identical on purpose.
-- **Known environment noise (not code):** in an unpublished Studio place, the original universe's sound/animation assets fail to load (`User is not authorized` / `serverplaceid=0` spam). The lobby UI is unaffected.
+- **Known environment noise (not code):** in an unpublished Studio place, the original universe's *animation and image* assets fail to load (`User is not authorized` / `serverplaceid=0` spam). Audio is already replaced with user-owned uploads (§4.6).
 
 ---
 
