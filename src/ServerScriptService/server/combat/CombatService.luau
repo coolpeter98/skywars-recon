@@ -40,7 +40,9 @@
 -- fully absorbs exactly one hit no matter how much remains (1 shield point
 -- still blocks a whole hit) and is then removed; the Shield power-up ends
 -- when its shield is consumed. While the attacker has LifeSteal active,
--- every validated damaging hit heals them for ~3 health.
+-- every validated damaging hit heals them for ~3 health. Any hit that
+-- costs the target health restarts their natural-regeneration tick clock
+-- (RegenerationService).
 --
 -- Bow hits are routed through the same damage path by ProjectileService.
 
@@ -122,6 +124,7 @@ type CombatContext = {
 	playerSessions: any,
 	customGameService: any,
 	powerUpService: any,
+	regenerationService: any,
 	killLog: any,
 }
 
@@ -489,6 +492,17 @@ function CombatService:dealDamage(
 	local health = getHealth(target)
 	local newHealth = math.max(HealthConstants.MIN_HEALTH, health - damageToHealth)
 	target:SetAttribute(Attribute.Health, newHealth)
+
+	-- Natural regeneration: a hit that actually costs the target health
+	-- restarts their post-damage tick clock, so regeneration only resumes a
+	-- full tick group after they last took damage. A shield-absorbed hit
+	-- costs no health and does not reset the clock.
+	if damageToHealth > 0 then
+		local regenerationService = self.context.regenerationService
+		if regenerationService ~= nil then
+			regenerationService:onPlayerDamaged(target)
+		end
+	end
 
 	-- Power-up hooks: a consumed shield ends the Shield power-up (its single
 	-- guaranteed block is spent), and a LifeSteal attacker heals on every

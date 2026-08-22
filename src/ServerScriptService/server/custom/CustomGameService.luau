@@ -638,6 +638,12 @@ function CustomGameService.spawnPlayer(self, player: Player, teamId: string)
 	player:SetAttribute("TeamId", teamId)
 	player:SetAttribute("Health", 100)
 	player:SetAttribute("Shield", 0)
+	-- The natural-regeneration tick clock starts at zero for every spawned
+	-- player: regen only begins a full tick group after the last hit.
+	local regenerationService = self.context.regenerationService
+	if regenerationService ~= nil then
+		regenerationService:resetPlayer(player)
+	end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.Health = humanoid.MaxHealth
@@ -768,6 +774,10 @@ function CustomGameService.eliminatePlayer(self, player: Player, damageType: str
 	if powerUpService ~= nil then
 		powerUpService:clearPlayer(player)
 	end
+	local regenerationService = self.context.regenerationService
+	if regenerationService ~= nil then
+		regenerationService:clearPlayer(player)
+	end
 	self.context.inventoryService:clear(player)
 	table.insert(self.eliminatedPlayers, 1, player)
 	local killCredit = if killer ~= nil and killer.Parent == Players then killer else nil
@@ -884,6 +894,10 @@ function CustomGameService.resetMatch(self)
 	local powerUpService = self.context.powerUpService
 	if powerUpService ~= nil then
 		powerUpService:clearAll()
+	end
+	local regenerationService = self.context.regenerationService
+	if regenerationService ~= nil then
+		regenerationService:clearAll()
 	end
 	self.loadedMap = nil
 	self:updateLocalRecord(function(record)
