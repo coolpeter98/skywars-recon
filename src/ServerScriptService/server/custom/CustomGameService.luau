@@ -968,9 +968,9 @@ function CustomGameService.resetMatch(self)
 		player:SetAttribute("Alive", nil)
 		player:SetAttribute("Spectating", false)
 		self.context.outbound:fire("StopSpectating", player)
-		-- Reloading through PlayerSessions stands the character at a real
-		-- lobby spawn (a bare LoadCharacter would strand it in the void).
-		self.context.playerSessions:spawnCharacterAtLobby(player)
+		pcall(function()
+			player:LoadCharacter()
+		end)
 	end
 	self:replicateAll()
 end
