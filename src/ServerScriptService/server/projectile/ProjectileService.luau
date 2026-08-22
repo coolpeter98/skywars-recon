@@ -203,6 +203,96 @@ local function applyHit(self: ProjectileServiceState, projectile: Projectile, hi
 	return false
 end
 
+-- Plays a projectile's ExplosionSound at a position through the client-side
+-- SoundPlayed pipeline (the client renders no explosion audio of its own).
+local function playExplosionSound(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
+	local soundId = projectile.data.ExplosionSound
+	if soundId == nil then
+		return
+	end
+	self.context.outbound:fireAll("SoundPlayed", ("Explosion_%s"):format(projectile.identifier), soundId, position, {
+		Volume = 1,
+	})
+end
+
+-- Spawns a one-shot particle burst from the projectile's recovered
+-- ExplosionParticles definition. The client renders no explosion FX itself,
+-- so the server owns the burst; it is cosmetic only.
+local function spawnExplosionFx(position: Vector3, config: { [string]: any }?)
+	if config == nil then
+		return
+	end
+	local anchor = Instance.new("Part")
+	anchor.Name = "ExplosionFx"
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.CastShadow = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+	anchor.Position = position
+	anchor.Parent = Workspace
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Color = config.Color
+	emitter.Size = config.Size
+	emitter.Acceleration = config.Acceleration
+	emitter.Lifetime = config.Lifetime or NumberRange.new(0.5, 1)
+	emitter.Rotation = config.Rotation or NumberRange.new(0, 360)
+	emitter.SpreadAngle = config.SpreadAngle or Vector2.new(180, 180)
+	emitter.LightInfluence = config.LightInfluence
+	emitter.LightEmission = config.LightEmission
+	emitter.Speed = if type(config.Speed) == "number" then NumberRange.new(config.Speed) else NumberRange.new(5)
+	emitter.Rate = 0
+	emitter.Parent = anchor
+	emitter:Emit(config.Count or 50)
+	task.delay(1.5, function()
+		anchor:Destroy()
+	end)
+end
+
+-- Shoves every valid enemy within the projectile's KnockbackRadius with the
+-- full fixed projectile impulse, away from the explosion center. Uniform with
+-- every other combat source: no self hits, no teammate hits, alive targets
+-- only. AoE damage is the caller's concern (Dynamite deals none).
+local function explodeKnockback(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
+	local knockbackRadius = projectile.data.KnockbackRadius
+	local combatService = self.context.combatService
+	if knockbackRadius == nil or combatService == nil then
+		return
+	end
+	for _, player in Players:GetPlayers() do
+		if not combatService:isValidTarget(projectile.shooter, player) then
+			continue
+		end
+		if combatService:isFriendlyFire(projectile.shooter, player) then
+			continue
+		end
+		local root = getPlayerRoot(player)
+		if root == nil then
+			continue
+		end
+		local offset = root.Position - position
+		local distance = offset.Magnitude
+		if distance > knockbackRadius then
+			continue
+		end
+		local direction = if distance > 0.001 then offset / distance else Vector3.new(1, 0, 0)
+		self.context.outbound:fire("DamageImpulse", player, combatService:getProjectileKnockback(direction))
+	end
+end
+
+-- Shared explosion entry point for explosive projectiles: one-time sound and
+-- particle burst at the impact point plus AoE knockback. AoE damage is the
+-- caller's concern (Dynamite none, Capybara linear falloff). Block breaking
+-- is intentionally not implemented yet (the placeholder map is not chunked).
+local function explode(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
+	playExplosionSound(self, projectile, position)
+	spawnExplosionFx(position, projectile.data.ExplosionParticles)
+	explodeKnockback(self, projectile, position)
+end
+
 function ProjectileService.new(context): typeof(ProjectileService)
 	return setmetatable({
 		context = context,
@@ -449,6 +539,20 @@ HIT_BEHAVIORS.Snowball = {
 		return false
 	end,
 	onEnvironmentHit = function(_: ProjectileServiceState, _: Projectile, _: Vector3)
+		return false
+	end,
+}
+
+-- Dynamite: a pure knockback explosion — Projectile.Damage = 0, so the blast
+-- only shoves within KnockbackRadius (no block damage yet). Explodes on any
+-- collision, player or environment.
+HIT_BEHAVIORS.Dynamite = {
+	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, _: Player)
+		explode(self, projectile, projectile.position)
+		return false
+	end,
+	onEnvironmentHit = function(self: ProjectileServiceState, projectile: Projectile, _: Vector3)
+		explode(self, projectile, projectile.position)
 		return false
 	end,
 }

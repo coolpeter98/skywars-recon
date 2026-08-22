@@ -380,6 +380,12 @@ function CombatService:getKnockback(direction: Vector3, strength: number): Vecto
 	return (horizontalDirection + Vector3.new(0, KNOCKBACK_UPWARD_BIAS, 0)).Unit * strength
 end
 
+-- The fixed impulse every projectile hit delivers. Explosion knockback
+-- (Capybara/Dynamite) reuses this so every projectile source shoves the same.
+function CombatService:getProjectileKnockback(direction: Vector3): Vector3
+	return self:getKnockback(direction, KNOCKBACK_BASE * PROJECTILE_KNOCKBACK_MULTIPLIER)
+end
+
 -- Shared damage application for every damage source. Applies friendly-fire,
 -- armour and shield, updates the replicated Health/Shield attributes,
 -- broadcasts the DamageDealt indicator, sends the knockback impulse built by
