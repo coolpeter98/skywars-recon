@@ -785,7 +785,21 @@ local function playChestOpen(chest: Model)
 	animation.AnimationId = RobloxAnimation.CHEST_OPEN
 	local track = animator:LoadAnimation(animation)
 	track:Play()
-	task.delay(math.max(track.Length - 0.06, 0.05), function()
+	-- The server streams animation content asynchronously: Length reports 0
+	-- until the asset loads and the queued play starts, so wait for the real
+	-- length and then freeze just before the final frame (a stopped track
+	-- would snap the lid back closed).
+	task.spawn(function()
+		local waited = 0
+		while track.Length <= 0 and waited < 5 do
+			waited += task.wait(0.1)
+		end
+		if track.Length <= 0 then
+			return
+		end
+		while track.IsPlaying and track.TimePosition < track.Length - 0.05 do
+			task.wait(0.03)
+		end
 		if track.IsPlaying then
 			track:AdjustSpeed(0)
 		end
