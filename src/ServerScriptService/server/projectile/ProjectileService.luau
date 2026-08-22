@@ -434,4 +434,23 @@ function ProjectileService.registerHitBehavior(projectileType: string, behavior:
 	HIT_BEHAVIORS[projectileType] = behavior
 end
 
+-- ────────────────────────── Projectile behaviors ───────────────────────────
+-- One entry per projectile item type; a behavior decides what a collision does
+-- (see HitBehavior). The registry lives here so every weapon's behavior is
+-- visible in one place; registerHitBehavior exists for future extension.
+
+-- Snowball: deals no damage (Projectile.Damage = 0) but still delivers the
+-- fixed projectile knockback impulse through CombatService's zero-damage
+-- path. WeldOnCollide = false, so environment hits clean the visual up. Its
+-- 0.5 s cooldown and speed come from the item definition automatically.
+HIT_BEHAVIORS.Snowball = {
+	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
+		dealPlayerHit(self, projectile, target)
+		return false
+	end,
+	onEnvironmentHit = function(_: ProjectileServiceState, _: Projectile, _: Vector3)
+		return false
+	end,
+}
+
 return ProjectileService
