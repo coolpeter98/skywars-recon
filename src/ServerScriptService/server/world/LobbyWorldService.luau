@@ -51,6 +51,10 @@ end
 -- Loads (and caches) the pre-game lobby clone used by setPregame and by the
 -- boot-time fallback. Returns nil (with a warning) when the asset is missing
 -- from the built place — usually a Rojo sync that never delivered the file.
+-- The clone keeps the asset's authored position: the asset is aligned by
+-- hand so its "SpawnLocation" anchor matches the map's "SpawnLocation"
+-- anchor (both named "SpawnLocation"), which is what places the pre-game
+-- lobby above the map centre.
 function LobbyWorldService.ensurePregameAsset(self): Instance?
 	if self.pregameLobby ~= nil then
 		return self.pregameLobby

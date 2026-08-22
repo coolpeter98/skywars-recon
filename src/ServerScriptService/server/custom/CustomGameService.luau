@@ -710,9 +710,15 @@ function CustomGameService.startMatch(self, player: Player)
 	-- Pregame state: the client's scoreboard shows its "Starting in N..."
 	-- countdown (it counts GameConstants.PREGAME_DURATION down from the
 	-- GameStateChangeTime event) while the players wait in the pre-game
-	-- lobby world. Nobody is teleported or caged yet.
+	-- lobby world. The arena loads right away — the real game has the map
+	-- fully built under the lobby during the countdown — but nobody is
+	-- teleported or caged yet.
 	self.roundState = "Pregame"
 	table.clear(self.eliminatedPlayers)
+	self.loadedMap = self.mapService:load(updated.Settings.GameMode, updated.Settings.MapName)
+	if self.loadedMap ~= nil then
+		self.context.blockWorldService:rebuild(self.loadedMap.Model)
+	end
 	self:replicateAll()
 	local lobbyCountdown = self.pregameService:startLobbyCountdown()
 	task.delay(lobbyCountdown, function()
@@ -725,14 +731,11 @@ function CustomGameService.startMatch(self, player: Player)
 		then
 			return
 		end
-		-- Phase 2 — the cages. The scoreboard countdown is over: load the
-		-- arena, teleport every participant to their spot, cage the assigned
-		-- players, and run the 4-second centre-screen countdown (Title
-		-- events: 4, 3, 2, 1 with the recovered voice sounds from "3" on).
-		self.loadedMap = self.mapService:load(updated.Settings.GameMode, updated.Settings.MapName)
-		if self.loadedMap ~= nil then
-			self.context.blockWorldService:rebuild(self.loadedMap.Model)
-		end
+		-- Phase 2 — the cages. The scoreboard countdown is over: the arena
+		-- is already built, so just teleport every participant to their spot,
+		-- cage the assigned players, and run the 4-second centre-screen
+		-- countdown (Title events: 4, 3, 2, 1 with the recovered voice
+		-- sounds from "3" on).
 		local cagedPlayers = {}
 		local cagedSpawns = {}
 		for _, participant in participants do
