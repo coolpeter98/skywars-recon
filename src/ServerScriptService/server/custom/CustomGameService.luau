@@ -275,9 +275,6 @@ function CustomGameService.teleportParty(self, owner: Player, partyPlayers: { Pl
 	if RunService:IsStudio() then
 		self.record = record
 		self.context.runtimeContext:setPrivate(record.Settings.GameMode, record.Id)
-		-- The server is now a custom match: swap the visible lobby world for
-		-- the pre-game lobby (see LobbyWorldService).
-		self.context.lobbyWorldService:setPregame()
 		self:replicateAll()
 		self:notify(owner, "Studio created a local custom game with code " .. record.ServerKey, true)
 		return
@@ -751,10 +748,6 @@ function CustomGameService.startMatch(self, player: Player)
 			end
 		end
 		self.roundState = "Countdown"
-		-- The lobby world is only for the Pregame/Ended phases: hide it
-		-- server-side (authoritative) the moment the round leaves the lobby,
-		-- so it can never linger under the arena during the match.
-		self.context.lobbyWorldService:hideWorld()
 		self:replicateAll()
 		self.pregameService:begin(cagedPlayers, cagedSpawns, CustomGameConfig.CountdownDuration)
 		task.delay(CustomGameConfig.CountdownDuration, function()
@@ -920,8 +913,6 @@ function CustomGameService.finishMatch(self, winners: { Player })
 	-- A round can end while the pre-game countdown is still running (players
 	-- leaving mid-countdown); the cages must not survive into the post-game.
 	self.pregameService:clear()
-	-- Post-game is a lobby phase: bring the lobby world back.
-	self.context.lobbyWorldService:showWorld()
 	local placements = { winners }
 	if #self.eliminatedPlayers > 0 then
 		table.insert(placements, table.clone(self.eliminatedPlayers))
@@ -951,9 +942,6 @@ function CustomGameService.resetMatch(self)
 	self.roundId += 1
 	self.roundState = "Pregame"
 	self.pregameService:clear()
-	-- Back to a lobby phase: show the lobby world again BEFORE the respawn
-	-- loop below, so LoadCharacter lands players on its SpawnLocations.
-	self.context.lobbyWorldService:showWorld()
 	self.mapService:unload()
 	self.context.blockWorldService:clear()
 	local combatService = self.context.combatService
@@ -1073,9 +1061,6 @@ function CustomGameService.configureReservedServer(self)
 	end
 	self.record = record
 	self.context.runtimeContext:setPrivate(record.Settings.GameMode, record.Id)
-	-- Reserved custom-match servers swap the lobby world for the pre-game
-	-- lobby before any player arrives (see LobbyWorldService).
-	self.context.lobbyWorldService:setPregame()
 end
 
 function CustomGameService.onPlayerRemoving(self, player: Player)

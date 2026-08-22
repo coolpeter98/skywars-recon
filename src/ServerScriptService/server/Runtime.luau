@@ -16,7 +16,6 @@ local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextSe
 local PartyService = require(script.Parent.party.PartyService)
 local CustomGameService = require(script.Parent.custom.CustomGameService)
 local BlockWorldService = require(script.Parent.world.BlockWorldService)
-local LobbyWorldService = require(script.Parent.world.LobbyWorldService)
 local KillLog = require(script.Parent.logging.KillLog)
 local NametagService = require(script.Parent.character.NametagService)
 
@@ -50,8 +49,6 @@ function Runtime.new()
 		runtimeContext = runtimeContext,
 		killLog = KillLog.new(),
 	}
-	local lobbyWorldService = LobbyWorldService.new(context)
-	context.lobbyWorldService = lobbyWorldService
 	local partyService = PartyService.new(context)
 	context.partyService = partyService
 	local customGameService = CustomGameService.new(context)
@@ -88,7 +85,6 @@ function Runtime.new()
 	return setmetatable({
 		playerSessions = playerSessions,
 		partyService = partyService,
-		lobbyWorldService = lobbyWorldService,
 		customGameService = customGameService,
 		inventoryService = inventoryService,
 		combatService = combatService,
@@ -111,7 +107,6 @@ function Runtime.start(self)
 		return
 	end
 	self.partyService:start()
-	self.lobbyWorldService:start()
 	self.customGameService:start()
 	self.matchmakingService:start()
 	self.inventoryService:start()
@@ -134,7 +129,6 @@ function Runtime.stop(self)
 	end
 	self.customGameService:stop()
 	self.partyService:stop()
-	self.lobbyWorldService:stop()
 	self.matchmakingService:stop()
 	self.projectileService:stop()
 	self.powerUpService:stop()
