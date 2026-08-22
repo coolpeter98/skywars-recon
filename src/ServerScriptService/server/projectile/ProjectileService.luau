@@ -260,7 +260,12 @@ local function spawnParticleBurst(
 	anchor.Parent = Workspace
 
 	local emitter = Instance.new("ParticleEmitter")
-	emitter.Color = config.Color
+	-- Every optional config field is nil-guarded: assigning nil to a
+	-- ParticleEmitter property (e.g. Acceleration on configs without it, like
+	-- the snowball's) errors and kills the whole burst.
+	if config.Color ~= nil then
+		emitter.Color = config.Color
+	end
 	-- Every original-game particle used the recovered sparkle texture by
 	-- default (ParticleModule defaults emitter.Texture to RobloxImage.PARTICLE,
 	-- "rbxassetid://9834778781"); without it bursts render as plain squares.
@@ -274,15 +279,21 @@ local function spawnParticleBurst(
 			)
 		end
 		emitter.Size = NumberSequence.new(keypoints)
-	else
+	elseif config.Size ~= nil then
 		emitter.Size = config.Size
 	end
-	emitter.Acceleration = config.Acceleration
+	if config.Acceleration ~= nil then
+		emitter.Acceleration = config.Acceleration
+	end
 	emitter.Lifetime = config.Lifetime or BURST_DEFAULT_LIFETIME
 	emitter.Rotation = config.Rotation or NumberRange.new(0, 360)
 	emitter.SpreadAngle = config.SpreadAngle or Vector2.new(180, 180)
-	emitter.LightInfluence = lightInfluence or config.LightInfluence
-	emitter.LightEmission = config.LightEmission
+	if lightInfluence ~= nil or config.LightInfluence ~= nil then
+		emitter.LightInfluence = if lightInfluence ~= nil then lightInfluence else config.LightInfluence
+	end
+	if config.LightEmission ~= nil then
+		emitter.LightEmission = config.LightEmission
+	end
 	emitter.Speed = if type(config.Speed) == "number"
 		then NumberRange.new(config.Speed * scale)
 		else NumberRange.new(5 * scale)
