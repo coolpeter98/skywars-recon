@@ -128,6 +128,43 @@ function LobbyWorldService.restoreLobby(self)
 	self.mode = "Lobby"
 end
 
+-- The world currently active for players (the one parented in Workspace, or
+-- the last known one while it is hidden in ServerStorage).
+function LobbyWorldService.getActiveWorld(self): Instance?
+	for _, world in { self.pregameLobby, self.normalLobby } do
+		if world ~= nil and world.Parent == Workspace then
+			return world
+		end
+	end
+	if self.pregameLobby ~= nil then
+		return self.pregameLobby
+	end
+	if self.normalLobby ~= nil then
+		return self.normalLobby
+	end
+	return Workspace:FindFirstChild(LOBBY_WORLD_NAME)
+end
+
+-- Visibility is server-owned. The client's own re-parent of the world (its
+-- LobbyWorldController moves it between Workspace and ReplicatedStorage) is a
+-- local edit on streamed content, which the streaming engine overrides when
+-- parts re-stream — the world visibly "comes back" during a match. Moving it
+-- server-side is authoritative and immediate: ServerStorage is not
+-- replicated, so the world vanishes for every client in the same frame.
+function LobbyWorldService.hideWorld(self)
+	local world = self:getActiveWorld()
+	if world ~= nil and world.Parent == Workspace then
+		world.Parent = ServerStorage
+	end
+end
+
+function LobbyWorldService.showWorld(self)
+	local world = self:getActiveWorld()
+	if world ~= nil and world.Parent ~= Workspace then
+		world.Parent = Workspace
+	end
+end
+
 function LobbyWorldService.start(self)
 	-- Boot-time world sanity check. This place has no terrain: everything
 	-- below the floating builds is endless void, so a missing or empty lobby
