@@ -33,6 +33,7 @@ local Attribute = require(ReplicatedStorage.TS.attribute).Attribute
 local Items = require(ReplicatedStorage.TS.item.item).Items
 local ProjectileConstants = require(ReplicatedStorage.TS.projectile["projectile-constants"]).ProjectileConstants
 local WorldConstants = require(ReplicatedStorage.TS.world["world-constants"]).WorldConstants
+local RobloxImage = require(ReplicatedStorage.TS.asset.roblox["roblox-image"]).RobloxImage
 
 local DEFAULT_PROJECTILE_SPEED = 200
 local MAX_PROJECTILE_LIFETIME = 10
@@ -55,6 +56,8 @@ export type ProjectileData = {
 	ImpactSound: string?,
 	ExplosionSound: string?,
 	ExplosionParticles: { [string]: any }?,
+	-- Optional custom burst texture; falls back to the recovered sparkle.
+	Texture: string?,
 }
 
 export type RangedDefinition = {
@@ -258,6 +261,10 @@ local function spawnParticleBurst(
 
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Color = config.Color
+	-- Every original-game particle used the recovered sparkle texture by
+	-- default (ParticleModule defaults emitter.Texture to RobloxImage.PARTICLE,
+	-- "rbxassetid://9834778781"); without it bursts render as plain squares.
+	emitter.Texture = config.Texture or RobloxImage.PARTICLE
 	if config.Size ~= nil and scale ~= 1 then
 		local keypoints = {}
 		for _, keypoint in config.Size.Keypoints do
