@@ -474,6 +474,12 @@ function MapService.load(self, gameMode: string, selectedMapName: string): Loade
 	for _, descendant in placeholderMap:GetDescendants() do
 		if descendant:IsA("Model") and descendant:GetAttribute("Inventory") ~= nil then
 			CollectionService:AddTag(descendant, "block:chest")
+			-- The cached template carries one loot roll from its build time;
+			-- re-roll per round so every match gets fresh chest contents.
+			local tier = descendant:GetAttribute("ChestTier")
+			if type(tier) == "number" then
+				descendant:SetAttribute("Inventory", HttpService:JSONEncode(ChestLoot.getContents(tier)))
+			end
 		end
 	end
 	self.activeMap = placeholderMap
