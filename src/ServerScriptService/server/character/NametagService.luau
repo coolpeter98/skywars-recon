@@ -15,6 +15,9 @@
 --   * tags every character with "character" on spawn (and re-tags anything
 --     that removes the tag while the character is still the player's active
 --     character),
+--   * suppresses the Roblox native overhead name/health label
+--     (Humanoid.DisplayDistanceType = None, replicated) so only the custom
+--     client nametag shows — the recovered client never does this itself,
 --   * publishes the display attributes the nametag reads:
 --       Level     - ExperienceUtil.getLevel(profile.Experience) (shared)
 --       Wins      - profile.Stats summed across every per-queue entry
@@ -159,6 +162,19 @@ function NametagService:ensureCharacterTag(character: Model)
 	end
 end
 
+-- Hides the Roblox default overhead name/health label. Setting it server-side
+-- replicates to every viewer (including the owner); the client only ever
+-- renders its custom nametag. Client-created dummy models are untouched —
+-- they are not real players, so the native nametag system ignores them anyway.
+function NametagService:suppressNativeNametag(character: Model)
+	task.spawn(function()
+		local humanoid = character:WaitForChild("Humanoid", 10)
+		if humanoid ~= nil and humanoid:IsA("Humanoid") then
+			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		end
+	end)
+end
+
 function NametagService:trackPlayer(player: Player)
 	if self.characterConnections[player] ~= nil then
 		return
@@ -167,9 +183,11 @@ function NametagService:trackPlayer(player: Player)
 	local character = player.Character
 	if character ~= nil then
 		self:ensureCharacterTag(character)
+		self:suppressNativeNametag(character)
 	end
 	self.characterConnections[player] = player.CharacterAdded:Connect(function(newCharacter)
 		self:ensureCharacterTag(newCharacter)
+		self:suppressNativeNametag(newCharacter)
 	end)
 end
 
