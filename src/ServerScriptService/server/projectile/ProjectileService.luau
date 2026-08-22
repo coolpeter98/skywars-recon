@@ -328,6 +328,18 @@ local function explode(self: ProjectileServiceState, projectile: Projectile, pos
 	end
 end
 
+-- Moves the shooter's character to the projectile's impact point, exactly as
+-- the client places nothing and defines no offset. Velocity is zeroed so the
+-- arrival is clean.
+local function teleportShooter(_: ProjectileServiceState, projectile: Projectile, position: Vector3)
+	local root = getPlayerRoot(projectile.shooter)
+	if root == nil then
+		return
+	end
+	root.CFrame = CFrame.new(position)
+	root.AssemblyLinearVelocity = Vector3.zero
+end
+
 function ProjectileService.new(context): typeof(ProjectileService)
 	return setmetatable({
 		context = context,
@@ -602,6 +614,20 @@ HIT_BEHAVIORS.Capybara = {
 	end,
 	onEnvironmentHit = function(self: ProjectileServiceState, projectile: Projectile, _: Vector3)
 		explode(self, projectile, projectile.position, projectile.data.Damage)
+		return false
+	end,
+}
+
+-- Teleporter: no damage — moves the shooter to the exact impact point on any
+-- collision (player or environment), then cleans the visual up. Its 15 s
+-- cooldown comes from the item definition.
+HIT_BEHAVIORS.Teleporter = {
+	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, _: Player)
+		teleportShooter(self, projectile, projectile.position)
+		return false
+	end,
+	onEnvironmentHit = function(self: ProjectileServiceState, projectile: Projectile, _: Vector3)
+		teleportShooter(self, projectile, projectile.position)
 		return false
 	end,
 }
