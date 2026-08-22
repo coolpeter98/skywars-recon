@@ -693,6 +693,9 @@ function CustomGameService.startMatch(self, player: Player)
 	self.roundState = "Countdown"
 	table.clear(self.eliminatedPlayers)
 	self.loadedMap = self.mapService:load(updated.Settings.GameMode, updated.Settings.MapName)
+	if self.loadedMap ~= nil then
+		self.context.blockWorldService:rebuild(self.loadedMap.Model)
+	end
 	for _, participant in participants do
 		local teamId = assignments[tostring(participant.UserId)]
 		if teamId ~= nil then
@@ -803,6 +806,7 @@ function CustomGameService.resetMatch(self)
 	self.roundId += 1
 	self.roundState = "Pregame"
 	self.mapService:unload()
+	self.context.blockWorldService:clear()
 	self.loadedMap = nil
 	self:updateLocalRecord(function(record)
 		record.InGame = false
@@ -1039,6 +1043,7 @@ function CustomGameService.stop(self)
 	table.clear(self.characterConnections)
 	table.clear(self.humanoidConnections)
 	self.mapService:unload()
+	self.context.blockWorldService:clear()
 end
 
 return CustomGameService

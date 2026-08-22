@@ -43,7 +43,9 @@ function WorldHandlers.placeBlock(self, player: Player, position: Vector3, rotat
 	end
 	self.context.outbound:fire("BlockRemoved", player, position)
 end
-function WorldHandlers.hitBlock(self, player: Player, position: Vector3) end
+function WorldHandlers.hitBlock(self, player: Player, position: Vector3)
+	self.context.blockWorldService:registerHit(player, position)
+end
 
 function WorldHandlers.openChest(self, player: Player, chest: Model)
 	self.context.inventoryService:openChest(player, chest)

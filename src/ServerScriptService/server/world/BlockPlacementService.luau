@@ -273,6 +273,11 @@ function BlockPlacementService.placeBlock(
 		else
 			block:Destroy()
 		end
+		if committed and self.context.blockWorldService ~= nil then
+			-- Keep the voxel world in sync so placed blocks can be mined and
+			-- hide neighbouring map faces exactly like map blocks do.
+			self.context.blockWorldService:registerPart(block, resolvedItemType)
+		end
 		return committed
 	end)
 	self.reservedPositions[position] = nil
