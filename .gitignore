@@ -2,3 +2,7 @@
 # Vendored rbxm parser build artifacts
 tools/rbxm-parser-ts/node_modules/
 tools/rbxm-parser-ts/dist/
+
+# Local Studio saves (never commit these)
+sw.rbxl
+sw.rbxl.lock
