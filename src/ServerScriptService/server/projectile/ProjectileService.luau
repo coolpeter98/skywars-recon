@@ -720,7 +720,7 @@ HIT_BEHAVIORS.Dynamite = {
 	end,
 }
 
--- Capybara: an explosive AoE — Projectile.Damage = 50 applied with a linear
+-- Capybara: an explosive AoE — Projectile.Damage = 42 applied with a linear
 -- falloff across ExplosionRadius (3), plus the same full-impulse knockback
 -- blast as Dynamite within KnockbackRadius (5), plus a spherical block carve
 -- (ExplosionRadius, in blocks) through the voxel world.

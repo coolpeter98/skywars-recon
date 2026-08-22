@@ -462,7 +462,7 @@ local capybaraRanged = {
 }
 capybaraDefinition.Ranged = capybaraRanged
 local capybaraProjectile = {
-	["Damage"] = 50,
+	["Damage"] = 42,
 	["WeldOnCollide"] = false,
 	["FlyingSound"] = nil,
 	["ExplosionSound"] = nil,
