@@ -198,6 +198,37 @@ The client was brought from "hangs at Flamework boot" to a fully interactable lo
 - **Client lifecycle:** `LifecycleController` observes `CustomGame.ServerData.InGame` even when the client originally booted as a lobby (the Studio local-custom path). Entering a round invokes the existing game-start listeners, closes both `LobbyScreen` and `SidebarScreen`, and mounts the normal health bar/hotbar/scoreboard; private-round spectators do not reopen the lobby advertisement/dock. Returning to pregame invokes the existing lobby-start listeners. Custom creation also cancels any active public queue, and delayed lobby Auto Queue is suppressed after the runtime role becomes `Private`.
 - **Maps:** `server/custom/MapService.luau` is the single map layer for custom-game rounds. It prefers **real recovered maps**: a model at `ServerStorage/Maps/SkyWars/<MapName>` (the original game's convention, read by `ReplicatedStorage/TS/game/map/map-info.luau` — e.g. `Airport.rbxm`). A real map is parsed as `WorldData.Spawn` CFrameValue (the anchor — the map is placed so it lands at `MAP_ORIGIN` (0,300,0), then shifted down 1.5 studs because the client's block grid places block bottoms on world Y ≡ 1.5 (mod 3) while the map's build surfaces sit at local Y ≡ 1.5 (mod 3)), `SpawnLocations` (SpawnLocation parts numbered 1..12 → team ordinals 1..12; fewer teams spread evenly), and `WorldData.Chest.Tier.1..4` CFrameValues (each value's name is its tier; a fresh `ReplicatedStorage/Misc/ChestTierOne..Four` prefab chest is placed at every value, yawed 180° from the value's rotation because the prefab's lock faces opposite the generator's convention, with its base on the floor the value marks). The map's own `Chests` folder (generator-placed chest templates without the AnimationController rig the client's ChestComponent requires) and the SpawnLocation parts are discarded after reading; `WorldData.GameSpawn`/`ContestSpawn` are currently unused. When the selected map has no imported model (or the empty "random" selection), the per-mode **placeholder template** (`src/ServerStorage/Maps/SkyWars/<GameMode>/MapConfig.luau` + cached `Template` model) is generated as before: one island per team, a center island, and loot chests from `server/world/ChestLoot.luau` (island tiers 1-2, center tiers 3-4). Either way the arena is cloned into `Workspace.BlockContainer` (a Model), named after the selected map (placeholder fallbacks are named `Placeholder`), a sibling of player-placed blocks — the client's block raycast whitelists exactly `Workspace.BlockContainer`. (The former `PlaceholderMapService.luau` was folded into `MapService.luau` when real-map support landed.)
 
+#### Recovered real map format (e.g. `Airport.rbxm`, 8,240 instances — the layout `MapService.loadMap` consumes)
+
+```
+<MapName> (Model)                        ← sits at ServerStorage.Maps.SkyWars.<MapName>
+├── WorldData (Folder)
+│   ├── Spawn (CFrameValue)              ← the map's anchor point (Airport: (0, 64.5, 0));
+│   │                                      the map is placed so this lands at MAP_ORIGIN
+│   ├── Chest (Folder) > Tier (Folder)
+│   │   ├── 1..4 (Folder)                ← one folder per chest tier; every CFrameValue
+│   │   │   └── <n> (CFrameValue)        ←   inside is named after its tier ("1".."4")
+│   │   │                                  Airport: 24×tier1, 24×tier2, 16×tier3, 16×tier4
+│   ├── GameSpawn (Folder)               ← E/N/S/W folders; each holds a subfolder "E"
+│   │   ├── E/N/S/W                         with 2 CFrameValues "E" (the two side islands)
+│   │   │   └── E (2× "E") / "P"            plus a CFrameValue "P" (the pushed-back island)
+│   └── ContestSpawn (Folder)            ← 4 CFrameValues E/N/S/W on the semi-middle islands
+├── SpawnLocations (Folder)              ← SpawnLocation parts named 1..12, 30 studs above
+│                                           their islands, facing outward
+├── SpawnLocation                        ← top-level part mirroring WorldData.Spawn
+├── Chests (Folder)                      ← 80 generator-placed chest models (24/24/16/16);
+│                                           MeshParts (Base/Lid/Lock) + ProximityPrompt but
+│                                           NO AnimationController → discarded by the loader
+└── Default / E / N / S / W / <dir> E ×2 / <dir> P  ← island geometry models
+```
+
+Verified interpretations (all measured from the file, not guesses):
+
+- **Spawn number ↔ team:** SpawnLocations 1..12 map 1:1 onto the twelve SkyWars team ordinals (Solo uses all 12; Duos/Octos are also 12 teams; Trios/Quads spread 8 teams over the 12 spawns via `round(1 + (i-1)·12/teams)`). The 12 spawns are the 4 `P` islands + the 8 `<dir> E` side islands; the four semi-middle islands (`E/N/S/W` alone) and `Default` (center) have **no spawns**. `GameSpawn` CFrameValues sit at island-surface level directly under each of those 12 spawn points; `ContestSpawn` sits on the semi-middle islands.
+- **Chest placement:** each tier CFrameValue marks a floor point (its Y is the floor top the chest stands on) and a yaw facing the map center. The map's own pre-placed chests sit with their base bottom at the value's Y and pivot 1.5 studs above it — the loader reproduces that with the Misc prefabs, plus the 180° yaw correction noted above.
+- **Block grid:** the client places block centers on world multiples of 3 (bottoms at Y ≡ 1.5 mod 3); the map's build surfaces (chest floors, island decks) are all at local Y ≡ 1.5 (mod 3), so the map root must land at Y ≡ 0 (mod 3) — hence the 1.5-stud downward shift (Airport root = 234.0). Only parts named after block items (Airport has 11 `StoneBricks` pillars) are direct placement targets; elsewhere the assist/void-cast paths anchor off the world grid. `tools/analyze_grid.mjs` / `analyze_islands.mjs` re-verify a newly imported `.rbxm` against these rules.
+- **Format provenance:** the `.rbxm` files begin with the `<roblox!` magic (the `<` is part of it) and end with a stray `</roblox>` — both Rojo's parser and the vendored `tools/rbxm-parser-ts/` accept them; `tools/dump_rbxm.mjs` dumps an imported map's tree.
+
 ### 4.6 Authoritative combat (melee + projectiles)
 
 - **Character combat hitboxes:** the client's melee raycast is a whitelist of parts named `Hitbox` (and `ProjectileHitbox` for ranged) on other players' characters — without them the client can never find a player to swing at and fires `MeleeStrike(nil)`. `CombatService` welds a transparent, massless hitbox part onto every character on spawn using the classic `Weld` joint (`Weld.C0` is scriptable; `WeldConstraint.C0` is NOT — it errors at runtime), keeps the part a **direct child of the character model** (the whitelist uses `Character:FindFirstChild("Hitbox")`), and self-heals by re-attaching if anything removes a hitbox while the character lives; drops already carry their own `Hitbox` via the shared `ItemDropUtil`.
