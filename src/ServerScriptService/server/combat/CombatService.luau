@@ -386,6 +386,14 @@ function CombatService:getProjectileKnockback(direction: Vector3): Vector3
 	return self:getKnockback(direction, KNOCKBACK_BASE * PROJECTILE_KNOCKBACK_MULTIPLIER)
 end
 
+-- Damage without knockback, for sources that apply their own impulse (e.g.
+-- explosions shove through getProjectileKnockback). "Bow" keeps the shooter's
+-- hit-marker sound and stays inside the client's DamageDealt type whitelist
+-- (Melee/Bow/Fall/Void).
+function CombatService:dealExplosionDamage(attacker: Player?, target: Player, damage: number)
+	self:dealDamage(attacker, target, DAMAGE_TYPE_BOW, damage, nil)
+end
+
 -- Shared damage application for every damage source. Applies friendly-fire,
 -- armour and shield, updates the replicated Health/Shield attributes,
 -- broadcasts the DamageDealt indicator, sends the knockback impulse built by

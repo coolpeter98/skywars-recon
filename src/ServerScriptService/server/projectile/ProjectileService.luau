@@ -283,14 +283,49 @@ local function explodeKnockback(self: ProjectileServiceState, projectile: Projec
 	end
 end
 
+-- Applies AoE explosion damage with a linear falloff from full damage at the
+-- impact point to zero at ExplosionRadius. Same target rules as the knockback
+-- (no self/teammate hits, alive targets only). Damage routes through
+-- CombatService without an impulse — the blast already shoved these players.
+local function explodeDamage(self: ProjectileServiceState, projectile: Projectile, position: Vector3, damage: number)
+	local explosionRadius = projectile.data.ExplosionRadius
+	local combatService = self.context.combatService
+	if explosionRadius == nil or combatService == nil or explosionRadius <= 0 then
+		return
+	end
+	for _, player in Players:GetPlayers() do
+		if not combatService:isValidTarget(projectile.shooter, player) then
+			continue
+		end
+		if combatService:isFriendlyFire(projectile.shooter, player) then
+			continue
+		end
+		local root = getPlayerRoot(player)
+		if root == nil then
+			continue
+		end
+		local distance = (root.Position - position).Magnitude
+		if distance > explosionRadius then
+			continue
+		end
+		local dealtDamage = damage * (1 - distance / explosionRadius)
+		if dealtDamage > 0 then
+			combatService:dealExplosionDamage(projectile.shooter, player, dealtDamage)
+		end
+	end
+end
+
 -- Shared explosion entry point for explosive projectiles: one-time sound and
--- particle burst at the impact point plus AoE knockback. AoE damage is the
--- caller's concern (Dynamite none, Capybara linear falloff). Block breaking
--- is intentionally not implemented yet (the placeholder map is not chunked).
-local function explode(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
+-- particle burst at the impact point, AoE knockback, and optional AoE damage
+-- (Dynamite none, Capybara linear falloff). Block breaking is intentionally
+-- not implemented yet (the placeholder map is not chunked).
+local function explode(self: ProjectileServiceState, projectile: Projectile, position: Vector3, damage: number?)
 	playExplosionSound(self, projectile, position)
 	spawnExplosionFx(position, projectile.data.ExplosionParticles)
 	explodeKnockback(self, projectile, position)
+	if damage ~= nil and damage > 0 then
+		explodeDamage(self, projectile, position, damage)
+	end
 end
 
 function ProjectileService.new(context): typeof(ProjectileService)
@@ -553,6 +588,20 @@ HIT_BEHAVIORS.Dynamite = {
 	end,
 	onEnvironmentHit = function(self: ProjectileServiceState, projectile: Projectile, _: Vector3)
 		explode(self, projectile, projectile.position)
+		return false
+	end,
+}
+
+-- Capybara: an explosive AoE — Projectile.Damage = 50 applied with a linear
+-- falloff across ExplosionRadius (3), plus the same full-impulse knockback
+-- blast as Dynamite within KnockbackRadius (5). No block breaking yet.
+HIT_BEHAVIORS.Capybara = {
+	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, _: Player)
+		explode(self, projectile, projectile.position, projectile.data.Damage)
+		return false
+	end,
+	onEnvironmentHit = function(self: ProjectileServiceState, projectile: Projectile, _: Vector3)
+		explode(self, projectile, projectile.position, projectile.data.Damage)
 		return false
 	end,
 }
