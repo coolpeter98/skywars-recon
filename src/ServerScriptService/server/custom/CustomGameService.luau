@@ -10,6 +10,7 @@ local CustomGameStore = require(script.Parent.CustomGameStore)
 local LocalCustomGameStore = require(script.Parent.LocalCustomGameStore)
 local ModeRegistry = require(script.Parent.modes.ModeRegistry)
 local MapService = require(script.Parent.MapService)
+local PregameService = require(script.Parent.PregameService)
 
 type CustomGameRecord = CustomGameStore.CustomGameRecord
 
@@ -56,6 +57,7 @@ function CustomGameService.new(context)
 		context = context,
 		store = store,
 		mapService = MapService.new(),
+		pregameService = PregameService.new(context),
 		record = nil :: CustomGameRecord?,
 		loadedMap = nil :: MapService.LoadedMap?,
 		connections = {} :: { RBXScriptConnection },
@@ -182,12 +184,7 @@ end
 function CustomGameService.getBuildConstraints(self): { MapService.BuildConstraint }
 	local record = self.record
 	local loadedMap = self.loadedMap
-	if
-		record == nil
-		or not record.InGame
-		or loadedMap == nil
-		or (self.roundState ~= "Countdown" and self.roundState ~= "InGame")
-	then
+	if record == nil or not record.InGame or loadedMap == nil or self.roundState ~= "InGame" then
 		return {}
 	end
 	return loadedMap.BuildConstraints
@@ -613,14 +610,17 @@ function CustomGameService.setPlayerBan(self, player: Player, userId: number, di
 	end
 end
 
-function CustomGameService.spawnPlayer(self, player: Player, teamId: string)
+-- Places an assigned participant at their team's spawn and arms their starter
+-- inventory. Returns the spawn CFrame used (nil when the map or spawn is
+-- missing) so the caller can cage the player there during the countdown.
+function CustomGameService.spawnPlayer(self, player: Player, teamId: string): CFrame?
 	local loadedMap = self.loadedMap
 	if loadedMap == nil then
-		return
+		return nil
 	end
 	local spawnCFrame = loadedMap.SpawnPositions[teamId]
 	if spawnCFrame == nil then
-		return
+		return nil
 	end
 	local character = player.Character
 	if character == nil then
@@ -628,7 +628,7 @@ function CustomGameService.spawnPlayer(self, player: Player, teamId: string)
 			player:LoadCharacter()
 		end)
 		if not success then
-			return
+			return nil
 		end
 		character = player.Character or player.CharacterAdded:Wait()
 	end
@@ -659,6 +659,7 @@ function CustomGameService.spawnPlayer(self, player: Player, teamId: string)
 	self.context.inventoryService:changeItem(player, "TeamConcrete", 32)
 	self.context.inventoryService:setHeldItem(player, "BronzeSword")
 	self:bindHumanoid(player)
+	return spawnCFrame
 end
 
 function CustomGameService.spawnSpectator(self, player: Player)
@@ -702,31 +703,57 @@ function CustomGameService.startMatch(self, player: Player)
 	end
 	self.roundId += 1
 	local roundId = self.roundId
-	self.roundState = "Countdown"
+	-- The round opens in the Pregame state: the client's scoreboard shows
+	-- its "Starting in N..." countdown for this state, and gameplay (combat,
+	-- block placement) stays gated until InGame.
+	self.roundState = "Pregame"
 	table.clear(self.eliminatedPlayers)
 	self.loadedMap = self.mapService:load(updated.Settings.GameMode, updated.Settings.MapName)
 	if self.loadedMap ~= nil then
 		self.context.blockWorldService:rebuild(self.loadedMap.Model)
 	end
+	local cagedPlayers = {}
+	local cagedSpawns = {}
 	for _, participant in participants do
 		local teamId = assignments[tostring(participant.UserId)]
 		if teamId ~= nil then
-			self:spawnPlayer(participant, teamId)
+			local spawnCFrame = self:spawnPlayer(participant, teamId)
+			if spawnCFrame ~= nil then
+				table.insert(cagedPlayers, participant)
+				cagedSpawns[participant] = spawnCFrame
+			end
 		else
 			self:spawnSpectator(participant)
 		end
 	end
 	self:replicateAll()
-	for _, participant in participants do
-		self.context.outbound:fire("GameStateChangeTime", participant, CustomGameConfig.CountdownDuration)
-	end
+	-- The 5-second pre-game: assigned players are boxed into their cages at
+	-- spawn, the client's countdown displays start (scoreboard text + the
+	-- world timer billboard), and the countdown audio plays.
+	self.pregameService:begin(
+		cagedPlayers,
+		cagedSpawns,
+		if self.loadedMap ~= nil then self.loadedMap.Model else nil,
+		CustomGameConfig.CountdownDuration
+	)
 	task.delay(CustomGameConfig.CountdownDuration, function()
-		if not self.running or self.roundId ~= roundId or self.record == nil or not self.record.InGame then
+		if
+			not self.running
+			or self.roundId ~= roundId
+			or self.record == nil
+			or not self.record.InGame
+			or self.roundState ~= "Pregame"
+		then
 			return
 		end
+		-- GO: cages drop (with the release sound), then the round opens.
+		self.pregameService:finish()
 		self.roundState = "InGame"
 		self:replicateAll()
 		for _, participant in Players:GetPlayers() do
+			-- GameStateChangeTime(0) rebases the scoreboard clock: the
+			-- GameTimer counts round time from the moment InGame begins.
+			self.context.outbound:fire("GameStateChangeTime", participant, 0)
 			self.context.outbound:fire("GameStarted", participant)
 		end
 	end)
@@ -867,6 +894,9 @@ function CustomGameService.finishMatch(self, winners: { Player })
 		return
 	end
 	self.roundState = "Ended"
+	-- A round can end while the pre-game countdown is still running (players
+	-- leaving mid-countdown); the cages must not survive into the post-game.
+	self.pregameService:clear()
 	local placements = { winners }
 	if #self.eliminatedPlayers > 0 then
 		table.insert(placements, table.clone(self.eliminatedPlayers))
@@ -895,6 +925,7 @@ function CustomGameService.resetMatch(self)
 	end
 	self.roundId += 1
 	self.roundState = "Pregame"
+	self.pregameService:clear()
 	self.mapService:unload()
 	self.context.blockWorldService:clear()
 	local combatService = self.context.combatService
@@ -990,6 +1021,9 @@ function CustomGameService.initializePlayer(self, player: Player)
 	if record.InGame then
 		self:spawnSpectator(player)
 	end
+	-- Mid-countdown arrivals (spectators admitted during the pre-game) get
+	-- the remaining time on both countdown displays.
+	self.pregameService:syncPlayer(player)
 	self:persistPresence()
 	self:replicateAll()
 end
@@ -1148,6 +1182,7 @@ function CustomGameService.stop(self)
 	table.clear(self.connections)
 	table.clear(self.characterConnections)
 	table.clear(self.humanoidConnections)
+	self.pregameService:clear()
 	self.mapService:unload()
 	self.context.blockWorldService:clear()
 end
