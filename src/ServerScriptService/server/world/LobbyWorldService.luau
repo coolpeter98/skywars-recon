@@ -36,6 +36,36 @@ local Attribute = require(ReplicatedStorage.TS.attribute).Attribute
 local LOBBY_WORLD_NAME = "Lobby"
 local PREGAME_LOBBY_ASSET_NAME = "PregameLobby"
 
+-- This place has no terrain: below the floating builds (lobby ~Y130+, maps
+-- ~Y170+) there is nothing at all. Anyone found below this floor is falling
+-- forever; the watchdog logs where they were and rescues them.
+local VOID_FLOOR_Y = 100
+local VOID_CHECK_INTERVAL = 0.5
+
+-- The client's JoinWorld guard (t.children) requires these WorldData folders
+-- to exist on any world the server pushes. Neither recovered world has all
+-- of them (the normal lobby lacks Billboard/Dog/ScavengerProp; the pre-game
+-- lobby also lacks SkyText/DisplayBoard), and a failing payload is silently
+-- dropped — the client never switches worlds. Complete whichever world is
+-- about to be pushed with empty folders (the guard only requires them to
+-- exist; no client code reads their contents).
+local REQUIRED_WORLD_DATA_FOLDERS =
+	{ "RandomSpawn", "SkyText", "Billboard", "Prefab", "Dog", "ScavengerProp", "DisplayBoard" }
+
+local function completeWorldData(world: Instance)
+	local worldData = world:FindFirstChild("WorldData")
+	if worldData == nil then
+		return
+	end
+	for _, folderName in REQUIRED_WORLD_DATA_FOLDERS do
+		if worldData:FindFirstChild(folderName) == nil then
+			local folder = Instance.new("Folder")
+			folder.Name = folderName
+			folder.Parent = worldData
+		end
+	end
+end
+
 local LobbyWorldService = {}
 LobbyWorldService.__index = LobbyWorldService
 
@@ -45,6 +75,7 @@ function LobbyWorldService.new(context)
 		mode = "Lobby" :: "Lobby" | "Pregame",
 		normalLobby = nil :: Instance?,
 		pregameLobby = nil :: Instance?,
+		started = false,
 	}, LobbyWorldService)
 end
 
@@ -68,6 +99,7 @@ function LobbyWorldService.ensurePregameAsset(self): Instance?
 	local pregameLobby = asset:Clone()
 	pregameLobby.Name = LOBBY_WORLD_NAME
 	pregameLobby:SetAttribute(Attribute.LobbyType, "Pregame")
+	completeWorldData(pregameLobby)
 	self.pregameLobby = pregameLobby
 	return pregameLobby
 end
@@ -125,6 +157,7 @@ function LobbyWorldService.restoreLobby(self)
 	if normalLobby ~= nil then
 		normalLobby.Parent = Workspace
 		normalLobby:SetAttribute(Attribute.LobbyType, "Lobby")
+		completeWorldData(normalLobby)
 		for _, player in Players:GetPlayers() do
 			self.context.outbound:fire("JoinWorld", player, normalLobby, "Lobby")
 		end
@@ -189,23 +222,80 @@ function LobbyWorldService.start(self)
 			fallback.Parent = Workspace
 			self.mode = "Pregame"
 		end
-		return
-	end
-	local hasSpawnLocation = false
-	for _, descendant in lobby:GetDescendants() do
-		if descendant:IsA("SpawnLocation") then
-			hasSpawnLocation = true
-			break
+	else
+		local hasSpawnLocation = false
+		for _, descendant in lobby:GetDescendants() do
+			if descendant:IsA("SpawnLocation") then
+				hasSpawnLocation = true
+				break
+			end
+		end
+		if not hasSpawnLocation then
+			warn(
+				"[LobbyWorld] The 'Lobby' world in Workspace has no SpawnLocations — players may spawn in the void. Re-sync Rojo."
+			)
+		end
+		-- One-time world report: when a player ends up in the void, this line
+		-- shows exactly what the world looks like from the server's side.
+		if lobby:IsA("Model") then
+			local spawnCount = 0
+			for _, descendant in lobby:GetDescendants() do
+				if descendant:IsA("SpawnLocation") then
+					spawnCount += 1
+				end
+			end
+			local boundingCFrame, boundingSize = lobby:GetBoundingBox()
+			print(
+				("[LobbyWorld] world ready: %q — %d SpawnLocations, bounds (%.0f, %.0f, %.0f) size (%.0f, %.0f, %.0f)"):format(
+					lobby.Name,
+					spawnCount,
+					boundingCFrame.X,
+					boundingCFrame.Y,
+					boundingCFrame.Z,
+					boundingSize.X,
+					boundingSize.Y,
+					boundingSize.Z
+				)
+			)
 		end
 	end
-	if not hasSpawnLocation then
-		warn(
-			"[LobbyWorld] The 'Lobby' world in Workspace has no SpawnLocations — players may spawn in the void. Re-sync Rojo."
-		)
-	end
+
+	-- Void watchdog: log and rescue anyone below every world. The round's own
+	-- void elimination handles in-match falls; this catches the rest (broken
+	-- spawns, missing geometry, a half-synced world) so nobody stays stuck.
+	self.started = true
+	task.spawn(function()
+		while self.started do
+			for _, player in Players:GetPlayers() do
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				if root ~= nil and root:IsA("BasePart") and root.Position.Y < VOID_FLOOR_Y then
+					warn(
+						("[LobbyWorld] %s fell into the void at (%.0f, %.0f, %.0f) — rescuing to the lobby"):format(
+							player.Name,
+							root.Position.X,
+							root.Position.Y,
+							root.Position.Z
+						)
+					)
+					local world = self:getActiveWorld()
+					if world ~= nil then
+						character:PivotTo(CFrame.new(world:GetPivot().Position + Vector3.new(0, 8, 0)))
+						root.AssemblyLinearVelocity = Vector3.zero
+					else
+						pcall(function()
+							player:LoadCharacter()
+						end)
+					end
+				end
+			end
+			task.wait(VOID_CHECK_INTERVAL)
+		end
+	end)
 end
 
 function LobbyWorldService.stop(self)
+	self.started = false
 	self:restoreLobby()
 end
 
