@@ -275,6 +275,9 @@ function CustomGameService.teleportParty(self, owner: Player, partyPlayers: { Pl
 	if RunService:IsStudio() then
 		self.record = record
 		self.context.runtimeContext:setPrivate(record.Settings.GameMode, record.Id)
+		-- The server is now a custom match: swap the visible lobby world for
+		-- the pre-game lobby (see LobbyWorldService).
+		self.context.lobbyWorldService:setPregame()
 		self:replicateAll()
 		self:notify(owner, "Studio created a local custom game with code " .. record.ServerKey, true)
 		return
@@ -1038,6 +1041,9 @@ function CustomGameService.configureReservedServer(self)
 	end
 	self.record = record
 	self.context.runtimeContext:setPrivate(record.Settings.GameMode, record.Id)
+	-- Reserved custom-match servers swap the lobby world for the pre-game
+	-- lobby before any player arrives (see LobbyWorldService).
+	self.context.lobbyWorldService:setPregame()
 end
 
 function CustomGameService.onPlayerRemoving(self, player: Player)
