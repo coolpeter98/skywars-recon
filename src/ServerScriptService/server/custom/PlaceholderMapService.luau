@@ -2,10 +2,12 @@
 
 local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
 local ModeRegistry = require(script.Parent.modes.ModeRegistry)
+local ChestLoot = require(script.Parent.Parent.world.ChestLoot)
 
 export type BuildConstraint = {
 	Type: "BoundingBox",
@@ -30,7 +32,12 @@ local BUILD_DEPTH_BELOW_MAP = 60
 local BUILD_HEIGHT_ABOVE_MAP = 90
 local PLATFORM_BLOCK_NAME = "StoneBricks"
 local PLACED_BLOCK_TAG = "block:placed"
-local TEMPLATE_VERSION = 3
+local TEMPLATE_VERSION = 4
+local CHEST_ASSET_NAMES = { "ChestTierOne", "ChestTierTwo", "ChestTierThree", "ChestTierFour" }
+-- The placeholder chests sat with their base 1.5 studs below their position;
+-- real chest models are placed with the same base height so they sit on the
+-- platform instead of floating or sinking.
+local CHEST_BASE_OFFSET_FROM_POSITION = 1.5
 
 local PlaceholderMapService = {}
 PlaceholderMapService.__index = PlaceholderMapService
@@ -49,45 +56,51 @@ local function createPart(name: string, size: Vector3, cframe: CFrame, color: Co
 	return part
 end
 
-local function createChest(name: string, position: Vector3, parent: Instance, centerChest: boolean): Model
-	local chest = Instance.new("Model")
-	chest.Name = name
-	local body = createPart(
-		"Body",
-		Vector3.new(4, 3, 3),
-		CFrame.new(position),
-		if centerChest then Color3.fromRGB(238, 185, 62) else Color3.fromRGB(139, 91, 54),
-		chest
-	)
-	local lid = createPart(
-		"Lid",
-		Vector3.new(4.2, 1, 3.2),
-		CFrame.new(position + Vector3.new(0, 2, 0)),
-		if centerChest then Color3.fromRGB(255, 220, 92) else Color3.fromRGB(174, 118, 68),
-		chest
-	)
-	body.CanCollide = true
-	lid.CanCollide = true
-	local animationController = Instance.new("AnimationController")
-	animationController.Name = "AnimationController"
-	animationController.Parent = chest
-	chest.PrimaryPart = body
-	local contents
-	if centerChest then
-		contents = {
-			["0"] = { Slot = 0, Type = "IronSword", Quantity = 1 },
-			["1"] = { Slot = 1, Type = "Bow", Quantity = 1 },
-			["2"] = { Slot = 2, Type = "Arrow", Quantity = 12 },
-			["3"] = { Slot = 3, Type = "GoldChestplate", Quantity = 1 },
-		}
-	else
-		contents = {
-			["0"] = { Slot = 0, Type = "BronzeSword", Quantity = 1 },
-			["1"] = { Slot = 1, Type = "Planks", Quantity = 24 },
-			["2"] = { Slot = 2, Type = "BronzeChestplate", Quantity = 1 },
-		}
+-- Clones a real recovered chest model (ReplicatedStorage/Misc) and positions
+-- it so its bounding-box base sits 1.5 studs below `position` — the same base
+-- height the old placeholder chests used. The model ships with its own
+-- AnimationController/Animator rig, which the server drives when the chest is
+-- opened. Returns nil if the asset is missing.
+local function createChest(name: string, position: Vector3, parent: Instance, tier: number): Model?
+	local misc = ReplicatedStorage:FindFirstChild("Misc")
+	local assetName = CHEST_ASSET_NAMES[tier] or "Chest"
+	local asset = misc and misc:FindFirstChild(assetName) or nil
+	if asset == nil or not asset:IsA("Model") then
+		warn(("[PlaceholderMapService] missing chest asset %s"):format(assetName))
+		return nil
 	end
+	local chest = asset:Clone()
+	chest.Name = name
+
+	-- Place the bounding-box bottom at position.Y - CHEST_BASE_OFFSET_FROM_POSITION,
+	-- horizontally centered on position (chests are axis-aligned here).
+	local boundingCFrame, boundingSize = chest:GetBoundingBox()
+	local boundingOffset = boundingCFrame.Position - chest:GetPivot().Position
+	local bottomY = position.Y - CHEST_BASE_OFFSET_FROM_POSITION
+	chest:PivotTo(
+		CFrame.new(
+			position.X - boundingOffset.X,
+			bottomY + boundingSize.Y / 2 - boundingOffset.Y,
+			position.Z - boundingOffset.Z
+		)
+	)
+
+	if chest.PrimaryPart == nil then
+		local largestPart: BasePart? = nil
+		for _, descendant in chest:GetDescendants() do
+			if
+				descendant:IsA("BasePart")
+				and (largestPart == nil or descendant.Size.Magnitude > largestPart.Size.Magnitude)
+			then
+				largestPart = descendant
+			end
+		end
+		chest.PrimaryPart = largestPart
+	end
+
+	local contents = ChestLoot.getContents(tier)
 	chest:SetAttribute("Inventory", HttpService:JSONEncode(contents))
+	chest:SetAttribute("ChestTier", tier)
 	CollectionService:AddTag(chest, "block:chest")
 	chest.Parent = parent
 	return chest
@@ -160,7 +173,7 @@ local function buildTemplate(gameMode: string, destination: Instance): Model
 			("CenterChest%d"):format(index),
 			MAP_ORIGIN + Vector3.new(math.cos(angle) * 12, 4.5, math.sin(angle) * 12),
 			centerIsland,
-			true
+			3 + (index - 1) % 2
 		)
 	end
 
@@ -201,7 +214,7 @@ local function buildTemplate(gameMode: string, destination: Instance): Model
 				("Chest%d"):format(chestIndex),
 				islandPosition + lateral * lateralOffset + Vector3.new(0, 4.5, 0),
 				island,
-				false
+				math.min(chestIndex, 2)
 			)
 		end
 	end
