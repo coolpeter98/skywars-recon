@@ -644,6 +644,12 @@ function CustomGameService.spawnPlayer(self, player: Player, teamId: string)
 	if regenerationService ~= nil then
 		regenerationService:resetPlayer(player)
 	end
+	-- Fall state restarts too: the first landing after a spawn is always
+	-- free (spawn points sit above their islands).
+	local fallDamageService = self.context.fallDamageService
+	if fallDamageService ~= nil then
+		fallDamageService:resetPlayer(player)
+	end
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.Health = humanoid.MaxHealth
@@ -778,6 +784,10 @@ function CustomGameService.eliminatePlayer(self, player: Player, damageType: str
 	if regenerationService ~= nil then
 		regenerationService:clearPlayer(player)
 	end
+	local fallDamageService = self.context.fallDamageService
+	if fallDamageService ~= nil then
+		fallDamageService:clearPlayer(player)
+	end
 	self.context.inventoryService:clear(player)
 	table.insert(self.eliminatedPlayers, 1, player)
 	local killCredit = if killer ~= nil and killer.Parent == Players then killer else nil
@@ -898,6 +908,10 @@ function CustomGameService.resetMatch(self)
 	local regenerationService = self.context.regenerationService
 	if regenerationService ~= nil then
 		regenerationService:clearAll()
+	end
+	local fallDamageService = self.context.fallDamageService
+	if fallDamageService ~= nil then
+		fallDamageService:clearAll()
 	end
 	self.loadedMap = nil
 	self:updateLocalRecord(function(record)

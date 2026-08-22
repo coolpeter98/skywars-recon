@@ -66,6 +66,7 @@ local Items = ItemModule.Items :: { [string]: ItemDefinition }
 
 local DAMAGE_TYPE_MELEE = "Melee"
 local DAMAGE_TYPE_BOW = "Bow"
+local DAMAGE_TYPE_FALL = "Fall"
 
 -- The client accepts strikes up to MAXIMUM_HIT_RANGE_BLOCKS * 3 (its desktop
 -- raycast bound); the slack covers network latency between the client-side
@@ -409,6 +410,17 @@ end
 -- (Melee/Bow/Fall/Void).
 function CombatService:dealExplosionDamage(attacker: Player?, target: Player, damage: number)
 	self:dealDamage(attacker, target, DAMAGE_TYPE_BOW, damage, nil)
+end
+
+-- Fall damage, computed from block levels by FallDamageService (the block
+-- the player fell from compared with the block they landed on — the game's
+-- own rule, no velocity involved). No attacker and no knockback; the shared
+-- pipeline still applies armour mitigation and all-or-nothing shield
+-- absorption, broadcasts the DamageDealt indicator as "Fall", resets the
+-- target's regeneration clock, and elimination reuses the existing
+-- last-attacker credit (a knock off a cliff logs to the hitter).
+function CombatService:dealFallDamage(target: Player, damage: number)
+	self:dealDamage(nil, target, DAMAGE_TYPE_FALL, damage, nil)
 end
 
 -- Shared damage application for every damage source. Applies friendly-fire,
