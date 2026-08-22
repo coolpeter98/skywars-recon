@@ -14,6 +14,7 @@ local PartyService = require(script.Parent.party.PartyService)
 local CustomGameService = require(script.Parent.custom.CustomGameService)
 local BlockWorldService = require(script.Parent.world.BlockWorldService)
 local KillLog = require(script.Parent.logging.KillLog)
+local NametagService = require(script.Parent.character.NametagService)
 
 local SessionHandlers = require(script.Parent.handlers.SessionHandlers)
 local MatchmakingHandlers = require(script.Parent.handlers.MatchmakingHandlers)
@@ -59,6 +60,8 @@ function Runtime.new()
 	context.projectileService = projectileService
 	local blockWorldService = BlockWorldService.new(context)
 	context.blockWorldService = blockWorldService
+	local nametagService = NametagService.new(context)
+	context.nametagService = nametagService
 	local eventRoutes = {}
 	appendRoutes(eventRoutes, SessionHandlers.new(context):getRoutes())
 	appendRoutes(eventRoutes, MatchmakingHandlers.new(context):getRoutes())
@@ -78,6 +81,7 @@ function Runtime.new()
 		combatService = combatService,
 		projectileService = projectileService,
 		blockWorldService = blockWorldService,
+		nametagService = nametagService,
 		matchmakingService = matchmakingService,
 		killLog = context.killLog,
 		eventRouter = EventRouter.new(remoteRegistry, playerSessions, eventRoutes),
@@ -100,6 +104,7 @@ function Runtime.start(self)
 	self.eventRouter:start()
 	self.functionRouter:start()
 	self.playerSessions:start()
+	self.nametagService:start()
 	self.started = true
 end
 
@@ -115,6 +120,7 @@ function Runtime.stop(self)
 	self.blockWorldService:stop()
 	self.inventoryService:stop()
 	self.playerSessions:stop()
+	self.nametagService:stop()
 	self.functionRouter:stop()
 	self.eventRouter:stop()
 	self.started = false
