@@ -706,40 +706,16 @@ function CustomGameService.startMatch(self, player: Player)
 	end
 	self.roundId += 1
 	local roundId = self.roundId
-	-- The round opens in the Pregame state: the client's scoreboard shows
-	-- its "Starting in N..." countdown for this state, and gameplay (combat,
-	-- block placement) stays gated until InGame.
+	-- Phase 1 — the pre-game lobby countdown. The round opens in the
+	-- Pregame state: the client's scoreboard shows its "Starting in N..."
+	-- countdown (it counts GameConstants.PREGAME_DURATION down from the
+	-- GameStateChangeTime event) while the players wait in the pre-game
+	-- lobby world. Nobody is teleported or caged yet.
 	self.roundState = "Pregame"
 	table.clear(self.eliminatedPlayers)
-	self.loadedMap = self.mapService:load(updated.Settings.GameMode, updated.Settings.MapName)
-	if self.loadedMap ~= nil then
-		self.context.blockWorldService:rebuild(self.loadedMap.Model)
-	end
-	local cagedPlayers = {}
-	local cagedSpawns = {}
-	for _, participant in participants do
-		local teamId = assignments[tostring(participant.UserId)]
-		if teamId ~= nil then
-			local spawnCFrame = self:spawnPlayer(participant, teamId)
-			if spawnCFrame ~= nil then
-				table.insert(cagedPlayers, participant)
-				cagedSpawns[participant] = spawnCFrame
-			end
-		else
-			self:spawnSpectator(participant)
-		end
-	end
 	self:replicateAll()
-	-- The 5-second pre-game: assigned players are boxed into their cages at
-	-- spawn, the client's countdown displays start (scoreboard text + the
-	-- world timer billboard), and the countdown audio plays.
-	self.pregameService:begin(
-		cagedPlayers,
-		cagedSpawns,
-		if self.loadedMap ~= nil then self.loadedMap.Model else nil,
-		CustomGameConfig.CountdownDuration
-	)
-	task.delay(CustomGameConfig.CountdownDuration, function()
+	local lobbyCountdown = self.pregameService:startLobbyCountdown()
+	task.delay(lobbyCountdown, function()
 		if
 			not self.running
 			or self.roundId ~= roundId
@@ -749,16 +725,53 @@ function CustomGameService.startMatch(self, player: Player)
 		then
 			return
 		end
-		-- GO: cages drop (with the release sound), then the round opens.
-		self.pregameService:finish()
-		self.roundState = "InGame"
-		self:replicateAll()
-		for _, participant in Players:GetPlayers() do
-			-- GameStateChangeTime(0) rebases the scoreboard clock: the
-			-- GameTimer counts round time from the moment InGame begins.
-			self.context.outbound:fire("GameStateChangeTime", participant, 0)
-			self.context.outbound:fire("GameStarted", participant)
+		-- Phase 2 — the cages. The scoreboard countdown is over: load the
+		-- arena, teleport every participant to their spot, cage the assigned
+		-- players, and run the 4-second centre-screen countdown (Title
+		-- events: 4, 3, 2, 1 with the recovered voice sounds from "3" on).
+		self.loadedMap = self.mapService:load(updated.Settings.GameMode, updated.Settings.MapName)
+		if self.loadedMap ~= nil then
+			self.context.blockWorldService:rebuild(self.loadedMap.Model)
 		end
+		local cagedPlayers = {}
+		local cagedSpawns = {}
+		for _, participant in participants do
+			local teamId = assignments[tostring(participant.UserId)]
+			if teamId ~= nil then
+				local spawnCFrame = self:spawnPlayer(participant, teamId)
+				if spawnCFrame ~= nil then
+					table.insert(cagedPlayers, participant)
+					cagedSpawns[participant] = spawnCFrame
+				end
+			else
+				self:spawnSpectator(participant)
+			end
+		end
+		self.roundState = "Countdown"
+		self:replicateAll()
+		self.pregameService:begin(cagedPlayers, cagedSpawns, CustomGameConfig.CountdownDuration)
+		task.delay(CustomGameConfig.CountdownDuration, function()
+			if
+				not self.running
+				or self.roundId ~= roundId
+				or self.record == nil
+				or not self.record.InGame
+				or self.roundState ~= "Countdown"
+			then
+				return
+			end
+			-- GO: the release title and its sound play at the exact moment the
+			-- cages drop (PregameService.finish), then the round opens.
+			self.pregameService:finish()
+			self.roundState = "InGame"
+			self:replicateAll()
+			for _, participant in Players:GetPlayers() do
+				-- GameStateChangeTime(0) rebases the scoreboard clock: the
+				-- GameTimer counts round time from the moment InGame begins.
+				self.context.outbound:fire("GameStateChangeTime", participant, 0)
+				self.context.outbound:fire("GameStarted", participant)
+			end
+		end)
 	end)
 end
 
@@ -972,7 +985,12 @@ function CustomGameService.bindHumanoid(self, player: Player)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid ~= nil then
 		self.humanoidConnections[player] = humanoid.Died:Connect(function()
-			self:eliminatePlayer(player, "Fall")
+			-- Deaths only eliminate during the round proper. A death during
+			-- the caged countdown (a player resetting) must not end the
+			-- round — PregameService re-cages the respawned character.
+			if self.roundState == "InGame" then
+				self:eliminatePlayer(player, "Fall")
+			end
 		end)
 	end
 end
@@ -1024,11 +1042,13 @@ function CustomGameService.initializePlayer(self, player: Player)
 	if record.InGame then
 		self:spawnSpectator(player)
 	end
-	-- Mid-countdown arrivals (spectators admitted during the pre-game) get
-	-- the remaining time on both countdown displays.
-	self.pregameService:syncPlayer(player)
 	self:persistPresence()
 	self:replicateAll()
+	-- Mid-countdown arrivals (spectators admitted during the pre-game) get
+	-- the remaining time on the countdown display. Fired after replicateAll
+	-- so the client's GameStateChangeTime listener (connected when the
+	-- scoreboard opens on the CustomGame update) already exists.
+	self.pregameService:syncPlayer(player)
 end
 
 function CustomGameService.configureReservedServer(self)

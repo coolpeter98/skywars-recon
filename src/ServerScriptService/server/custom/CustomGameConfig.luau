@@ -7,7 +7,10 @@ local CustomGameConfig = {
 	ServerListLimit = 100,
 	PrivateServerKeyLength = 6,
 	TeleportRetryDelays = { 0, 0.5, 1.5 },
-	CountdownDuration = 5,
+	-- The caged countdown: 4 centre-screen Title beats (4, 3, 2, 1 — the
+	-- first beat is silent, the recovered voice sounds follow from "3") and
+	-- then GO with the cages dropping.
+	CountdownDuration = 4,
 	PostGameDuration = 10,
 	-- SkyWars Octos is twelve teams of eight in the recovered client contract.
 	MaximumServerPlayers = 96,
