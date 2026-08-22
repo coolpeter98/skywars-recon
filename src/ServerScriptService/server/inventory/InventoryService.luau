@@ -12,6 +12,7 @@ local Currencies = require(ReplicatedStorage.TS.game["game-currency"]).Currencie
 local Shops = require(ReplicatedStorage.TS.game.shop["game-shop"]).Shops
 local RigUtil = require(ReplicatedStorage.TS.util["rig-util"]).RigUtil
 local ItemDropUtil = require(ReplicatedStorage.TS.item["item-drop-util"]).ItemDropUtil
+local RobloxAnimation = require(ReplicatedStorage.TS.asset.roblox["roblox-animation"]).RobloxAnimation
 
 type InventoryItem = {
 	Slot: number,
@@ -38,6 +39,8 @@ type ItemDefinition = {
 type ChestState = {
 	Size: number,
 	Contents: { [number]: InventoryItem },
+	-- Set once the opening animation has played; chests stay open forever.
+	Opened: boolean?,
 }
 
 local CHEST_SIZE = 18
@@ -764,6 +767,31 @@ function InventoryService.sendChest(self, player: Player, chest: Model, shouldOp
 	self.context.outbound:fire("ChestUpdated", player, chest, serializeContents(state.Contents), shouldOpen)
 end
 
+-- Plays the chest model's existing open animation once, then freezes the
+-- track on its final frame so the chest stays open in 3D forever (there is
+-- deliberately no closing animation). The recovered chest models ship with
+-- the AnimationController/Animator rig for exactly this server-driven
+-- playback; the client only checks that the rig exists.
+local function playChestOpen(chest: Model)
+	local animationController = chest:FindFirstChild("AnimationController")
+	if animationController == nil or not animationController:IsA("AnimationController") then
+		return
+	end
+	local animator = animationController:FindFirstChildOfClass("Animator")
+	if animator == nil then
+		return
+	end
+	local animation = Instance.new("Animation")
+	animation.AnimationId = RobloxAnimation.CHEST_OPEN
+	local track = animator:LoadAnimation(animation)
+	track:Play()
+	task.delay(math.max(track.Length - 0.06, 0.05), function()
+		if track.IsPlaying then
+			track:AdjustSpeed(0)
+		end
+	end)
+end
+
 function InventoryService.broadcastChest(self, chest: Model)
 	for _, player in Players:GetPlayers() do
 		local session = self.context.playerSessions:get(player)
@@ -779,6 +807,11 @@ function InventoryService.openChest(self, player: Player, chest: Model): boolean
 	end
 	local session = self.context.playerSessions:require(player)
 	session.openChest = chest
+	local state = self:getChestState(chest)
+	if state.Opened ~= true then
+		state.Opened = true
+		playChestOpen(chest)
+	end
 	self:sendChest(player, chest, true)
 	return true
 end
