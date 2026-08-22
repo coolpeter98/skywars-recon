@@ -33,9 +33,10 @@
 -- (one island per team plus a center island with loot chests) exactly as
 -- before imported maps were supported.
 --
--- Either way the arena is cloned into Workspace.BlockContainer as
--- "ActiveGameMap", a sibling of player-placed blocks (the client's block
--- raycast whitelists exactly Workspace.BlockContainer).
+-- Either way the arena is cloned into Workspace.BlockContainer, named after
+-- the selected map (placeholders are named "Placeholder"), as a sibling of
+-- player-placed blocks (the client's block raycast whitelists exactly
+-- Workspace.BlockContainer).
 
 local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
@@ -71,7 +72,6 @@ local MAP_ORIGIN = Vector3.new(0, 300, 0)
 -- the map's Spawn point at MAP_ORIGIN would land those surfaces at ≡ 0
 -- (mod 3), exactly 1.5 studs off the grid, so maps are shifted down 1.5.
 local MAP_GRID_Y_OFFSET = Vector3.new(0, -1.5, 0)
-local ACTIVE_MAP_NAME = "ActiveGameMap"
 local BLOCK_SIZE = 3
 local BUILD_HORIZONTAL_PADDING = 36
 local BUILD_MIN_Y_PADDING = 12
@@ -335,7 +335,7 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	end
 
 	local map = mapAsset:Clone()
-	map.Name = ACTIVE_MAP_NAME
+	map.Name = mapName
 	map:SetAttribute("SelectedMapName", mapName)
 	map:SetAttribute("Placeholder", false)
 
@@ -468,7 +468,7 @@ function MapService.load(self, gameMode: string, selectedMapName: string): Loade
 	end
 	local template = self:ensureTemplate(gameMode)
 	local placeholderMap = template:Clone()
-	placeholderMap.Name = ACTIVE_MAP_NAME
+	placeholderMap.Name = "Placeholder"
 	placeholderMap:SetAttribute("SelectedMapName", selectedMapName)
 	placeholderMap.Parent = blockContainer
 	for _, descendant in placeholderMap:GetDescendants() do
@@ -509,10 +509,14 @@ function MapService.unload(self)
 				placedBlock:Destroy()
 			end
 		end
-	end
-	local staleMap = blockContainer and blockContainer:FindFirstChild(ACTIVE_MAP_NAME)
-	if staleMap ~= nil then
-		staleMap:Destroy()
+		-- Safety net: remove any arena left over from an interrupted round.
+		-- Active arenas are the only BlockContainer children carrying the
+		-- SelectedMapName attribute (player-placed blocks never do).
+		for _, child in blockContainer:GetChildren() do
+			if child:GetAttribute("SelectedMapName") ~= nil then
+				child:Destroy()
+			end
+		end
 	end
 end
 
