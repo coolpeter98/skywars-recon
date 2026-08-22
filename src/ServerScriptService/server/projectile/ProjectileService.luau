@@ -226,19 +226,18 @@ end
 -- stay alive until the last emitted particle's lifetime expires — destroying
 -- it earlier kills the remaining visible particles.
 --
--- `scale` is a presentation multiplier (particle size, speed and count) and
--- `emitSeconds` the emission window, for bursts whose recovered config is
--- imperceptible in practice; the recovered config itself is never rewritten.
-local BURST_DEFAULT_EMIT_SECONDS = 0.1
+-- `scale` is a presentation multiplier (particle size, speed and count) for
+-- bursts whose recovered config is imperceptible in practice; the recovered
+-- config itself is never rewritten.
+local BURST_EMIT_SECONDS = 0.1
 local BURST_DEFAULT_COUNT = 50
 local BURST_DEFAULT_LIFETIME = NumberRange.new(0.5, 1)
 
-local function spawnParticleBurst(position: Vector3, config: { [string]: any }?, scale: number?, emitSeconds: number?)
+local function spawnParticleBurst(position: Vector3, config: { [string]: any }?, scale: number?)
 	if config == nil then
 		return
 	end
 	scale = scale or 1
-	emitSeconds = emitSeconds or BURST_DEFAULT_EMIT_SECONDS
 	local anchor = Instance.new("Part")
 	anchor.Name = "ImpactFx"
 	anchor.Anchored = true
@@ -274,17 +273,17 @@ local function spawnParticleBurst(position: Vector3, config: { [string]: any }?,
 	emitter.Speed = if type(config.Speed) == "number"
 		then NumberRange.new(config.Speed * scale)
 		else NumberRange.new(5 * scale)
-	emitter.Rate = (config.Count or BURST_DEFAULT_COUNT) * scale / emitSeconds
+	emitter.Rate = (config.Count or BURST_DEFAULT_COUNT) * scale / BURST_EMIT_SECONDS
 	emitter.Enabled = true
 	emitter.Parent = anchor
 
 	local maxLifetime = emitter.Lifetime.Max
-	task.delay(emitSeconds, function()
+	task.delay(BURST_EMIT_SECONDS, function()
 		if anchor.Parent ~= nil then
 			emitter.Rate = 0
 		end
 	end)
-	task.delay(emitSeconds + maxLifetime + 0.2, function()
+	task.delay(BURST_EMIT_SECONDS + maxLifetime + 0.2, function()
 		anchor:Destroy()
 	end)
 end
@@ -356,21 +355,9 @@ end
 -- particle burst at the impact point, AoE knockback, and optional AoE damage
 -- (Dynamite none, Capybara linear falloff). Block breaking is intentionally
 -- not implemented yet (the placeholder map is not chunked).
---
--- The recovered explosion burst (Count 100, 0.5-stud particles, gravity
--- dragging them away within ~0.5-1s) reads as a couple of specks in
--- practice, so it renders at 3x size/speed/count spread over 0.3 s.
-local EXPLOSION_PARTICLE_SCALE = 3
-local EXPLOSION_PARTICLE_EMIT_SECONDS = 0.3
-
 local function explode(self: ProjectileServiceState, projectile: Projectile, position: Vector3, damage: number?)
 	playExplosionSound(self, projectile, position)
-	spawnParticleBurst(
-		position,
-		projectile.data.ExplosionParticles,
-		EXPLOSION_PARTICLE_SCALE,
-		EXPLOSION_PARTICLE_EMIT_SECONDS
-	)
+	spawnParticleBurst(position, projectile.data.ExplosionParticles)
 	explodeKnockback(self, projectile, position)
 	if damage ~= nil and damage > 0 then
 		explodeDamage(self, projectile, position, damage)
