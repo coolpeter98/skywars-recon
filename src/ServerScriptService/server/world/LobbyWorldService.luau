@@ -48,6 +48,26 @@ function LobbyWorldService.new(context)
 	}, LobbyWorldService)
 end
 
+-- Loads (and caches) the pre-game lobby clone used by setPregame and by the
+-- boot-time fallback. Returns nil (with a warning) when the asset is missing
+-- from the built place — usually a Rojo sync that never delivered the file.
+function LobbyWorldService.ensurePregameAsset(self): Instance?
+	if self.pregameLobby ~= nil then
+		return self.pregameLobby
+	end
+	local maps = ServerStorage:FindFirstChild("Maps")
+	local asset = maps and maps:FindFirstChild(PREGAME_LOBBY_ASSET_NAME)
+	if asset == nil or not asset:IsA("Model") then
+		warn("[LobbyWorld] PregameLobby asset not found under ServerStorage.Maps — re-sync Rojo!")
+		return nil
+	end
+	local pregameLobby = asset:Clone()
+	pregameLobby.Name = LOBBY_WORLD_NAME
+	pregameLobby:SetAttribute(Attribute.LobbyType, "Pregame")
+	self.pregameLobby = pregameLobby
+	return pregameLobby
+end
+
 -- Retires the normal lobby and puts the pre-game lobby in its place. Safe to
 -- call repeatedly and from either private-role transition (reserved-server
 -- boot or the Studio local-custom creation): the second call is a no-op.
@@ -55,18 +75,9 @@ function LobbyWorldService.setPregame(self): boolean
 	if self.mode == "Pregame" then
 		return true
 	end
-	local pregameLobby = self.pregameLobby
+	local pregameLobby = self:ensurePregameAsset()
 	if pregameLobby == nil then
-		local maps = ServerStorage:FindFirstChild("Maps")
-		local asset = maps and maps:FindFirstChild(PREGAME_LOBBY_ASSET_NAME)
-		if asset == nil or not asset:IsA("Model") then
-			warn("[LobbyWorld] PregameLobby asset not found under ServerStorage.Maps")
-			return false
-		end
-		pregameLobby = asset:Clone()
-		pregameLobby.Name = LOBBY_WORLD_NAME
-		pregameLobby:SetAttribute(Attribute.LobbyType, "Pregame")
-		self.pregameLobby = pregameLobby
+		return false
 	end
 
 	local normalLobby = self.normalLobby or Workspace:FindFirstChild(LOBBY_WORLD_NAME)
@@ -117,7 +128,41 @@ function LobbyWorldService.restoreLobby(self)
 	self.mode = "Lobby"
 end
 
-function LobbyWorldService.start(_) end
+function LobbyWorldService.start(self)
+	-- Boot-time world sanity check. This place has no terrain: everything
+	-- below the floating builds is endless void, so a missing or empty lobby
+	-- world (a lost/unsynced model, a half-applied Rojo sync, a saved
+	-- post-swap place state) strands players falling forever with no error.
+	-- Fall back to the pre-game lobby asset so there is always a world,
+	-- spawn points, and a floor.
+	local lobby = Workspace:FindFirstChild(LOBBY_WORLD_NAME)
+	if lobby == nil or (lobby:IsA("Model") and #lobby:GetChildren() == 0) then
+		if lobby ~= nil then
+			lobby:Destroy()
+		end
+		warn(
+			"[LobbyWorld] No usable 'Lobby' world in Workspace at boot — placing the PregameLobby asset so players are not left in the void. Re-sync Rojo to restore the normal lobby."
+		)
+		local fallback = self:ensurePregameAsset()
+		if fallback ~= nil then
+			fallback.Parent = Workspace
+			self.mode = "Pregame"
+		end
+		return
+	end
+	local hasSpawnLocation = false
+	for _, descendant in lobby:GetDescendants() do
+		if descendant:IsA("SpawnLocation") then
+			hasSpawnLocation = true
+			break
+		end
+	end
+	if not hasSpawnLocation then
+		warn(
+			"[LobbyWorld] The 'Lobby' world in Workspace has no SpawnLocations — players may spawn in the void. Re-sync Rojo."
+		)
+	end
+end
 
 function LobbyWorldService.stop(self)
 	self:restoreLobby()
