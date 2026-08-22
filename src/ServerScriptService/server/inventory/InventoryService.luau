@@ -12,6 +12,7 @@ local Currencies = require(ReplicatedStorage.TS.game["game-currency"]).Currencie
 local Shops = require(ReplicatedStorage.TS.game.shop["game-shop"]).Shops
 local RigUtil = require(ReplicatedStorage.TS.util["rig-util"]).RigUtil
 local ItemDropUtil = require(ReplicatedStorage.TS.item["item-drop-util"]).ItemDropUtil
+local RobloxSound = require(ReplicatedStorage.TS.asset.roblox["roblox-sound"]).RobloxSound
 
 -- The original game plays ONE chest animation: a single swing to the
 -- fully-open pose (~110 degrees), then the chest never closes. That is the
@@ -778,7 +779,16 @@ end
 -- game never closes chests). The chest models ship with the
 -- AnimationController/Animator rig for exactly this server-driven playback;
 -- the client only checks that the rig exists.
-local function playChestOpen(chest: Model)
+local function playChestOpen(self, chest: Model)
+	-- The client plays no chest audio of its own; the recovered chest-open
+	-- sound goes through the SoundPlayed pipeline at the chest's position.
+	self.context.outbound:fireAll(
+		"SoundPlayed",
+		("ChestOpen_%s"):format(HttpService:GenerateGUID(false)),
+		RobloxSound.Chest.OPEN,
+		chest:GetPivot().Position,
+		{ Volume = 0.8 }
+	)
 	local animationController = chest:FindFirstChild("AnimationController")
 	if animationController == nil or not animationController:IsA("AnimationController") then
 		return
@@ -831,7 +841,7 @@ function InventoryService.openChest(self, player: Player, chest: Model): boolean
 	local state = self:getChestState(chest)
 	if state.Opened ~= true then
 		state.Opened = true
-		playChestOpen(chest)
+		playChestOpen(self, chest)
 	end
 	self:sendChest(player, chest, true)
 	return true

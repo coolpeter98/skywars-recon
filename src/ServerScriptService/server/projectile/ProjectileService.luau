@@ -215,15 +215,16 @@ local function playExplosionSound(self: ProjectileServiceState, projectile: Proj
 	})
 end
 
--- Spawns a one-shot particle burst from the projectile's recovered
--- ExplosionParticles definition. The client renders no explosion FX itself,
--- so the server owns the burst; it is cosmetic only.
-local function spawnExplosionFx(position: Vector3, config: { [string]: any }?)
+-- Spawns a one-shot particle burst from a projectile's recovered
+-- ExplosionParticles definition. The client renders flight ParticleTrails
+-- itself, but no client code consumes ExplosionParticles, so the server owns
+-- every impact burst (explosions, snowball impacts, ...); it is cosmetic only.
+local function spawnParticleBurst(position: Vector3, config: { [string]: any }?)
 	if config == nil then
 		return
 	end
 	local anchor = Instance.new("Part")
-	anchor.Name = "ExplosionFx"
+	anchor.Name = "ImpactFx"
 	anchor.Anchored = true
 	anchor.CanCollide = false
 	anchor.CanQuery = false
@@ -321,7 +322,7 @@ end
 -- not implemented yet (the placeholder map is not chunked).
 local function explode(self: ProjectileServiceState, projectile: Projectile, position: Vector3, damage: number?)
 	playExplosionSound(self, projectile, position)
-	spawnExplosionFx(position, projectile.data.ExplosionParticles)
+	spawnParticleBurst(position, projectile.data.ExplosionParticles)
 	explodeKnockback(self, projectile, position)
 	if damage ~= nil and damage > 0 then
 		explodeDamage(self, projectile, position, damage)
@@ -605,14 +606,18 @@ end
 
 -- Snowball: deals no damage (Projectile.Damage = 0) but still delivers the
 -- fixed projectile knockback impulse through CombatService's zero-damage
--- path. WeldOnCollide = false, so environment hits clean the visual up. Its
--- 0.5 s cooldown and speed come from the item definition automatically.
+-- path, and bursts with its recovered ExplosionParticles on every impact
+-- (the client plays its ImpactSound and renders the flight trail itself).
+-- WeldOnCollide = false, so environment hits clean the visual up. Its 0.5 s
+-- cooldown and speed come from the item definition automatically.
 HIT_BEHAVIORS.Snowball = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
 		dealPlayerHit(self, projectile, target)
+		spawnParticleBurst(projectile.position, projectile.data.ExplosionParticles)
 		return false
 	end,
-	onEnvironmentHit = function(_: ProjectileServiceState, _: Projectile, _: Vector3)
+	onEnvironmentHit = function(_: ProjectileServiceState, projectile: Projectile, position: Vector3)
+		spawnParticleBurst(position, projectile.data.ExplosionParticles)
 		return false
 	end,
 }
