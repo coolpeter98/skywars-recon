@@ -215,7 +215,7 @@ The client was brought from "hangs at Flamework boot" to a fully interactable lo
 
 ## 5. Current status & known gaps
 
-- **Done:** full rename + types on 734 scripts; named event access; **the client boots in Studio and shows a fully interactable lobby UI**; all eight public modes share one PlaceId and route through MemoryStore-backed matchmaking/reserved servers; character spawn + profile replication, an authoritative inventory/drop/chest/shop foundation, and authoritative combat (melee + arrows) are provided by the server; parties and SkyWars custom games are implemented end to end (§4.4–§4.5).
+- **Done:** full rename + types on 734 scripts; named event access; **the client boots in Studio and shows a fully interactable lobby UI**; all eight public modes share one PlaceId and route through MemoryStore-backed matchmaking/reserved servers; character spawn + profile replication, an authoritative inventory/drop/chest/shop foundation, and authoritative combat (melee + all six projectile weapons: Bow, Snowball, Dynamite, Capybara, Teleporter, FishingRod) are provided by the server; parties and SkyWars custom games are implemented end to end (§4.4–§4.5).
 - **Open / planned:**
   - Flamework controller dependency ids — `Flamework.resolveDependency("1LA")` strings could be replaced with named constants (same pattern as event rename). Known id→controller map exists (e.g. `zG`=Rodux, `lB5`=Screen, `Xlg`=Content, `7xl`=PlayerSettings, `rB8`=Game, `yAg`=ABTest, `jL9`=Sound, `MMv`=Matchmaking, `1LA`=Spectator, `x5`=Team, …) but is incomplete/unverified.
   - `SetValue` store `Key` strings → named access (same pattern).
