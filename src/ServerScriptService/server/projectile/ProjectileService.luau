@@ -340,6 +340,31 @@ local function teleportShooter(_: ProjectileServiceState, projectile: Projectile
 	root.AssemblyLinearVelocity = Vector3.zero
 end
 
+-- Pulls the hooked player toward the caster: the recovered KnockbackScalar
+-- (-1.5, 1, -1.5) negates the fish's travel direction (X/Z pull back toward
+-- the fisherman) while keeping the vertical component. The scalar multiplies
+-- the projectile's velocity component-wise, faithfully to the recovered item
+-- data, so a fully-charged cast pulls harder than a limp one.
+local function pullPlayer(self: ProjectileServiceState, projectile: Projectile, target: Player)
+	local scalar = projectile.data.KnockbackScalar
+	if scalar == nil then
+		return
+	end
+	local combatService = self.context.combatService
+	if combatService == nil then
+		return
+	end
+	if not combatService:isValidTarget(projectile.shooter, target) then
+		return
+	end
+	if combatService:isFriendlyFire(projectile.shooter, target) then
+		return
+	end
+	local velocity = projectile.velocity
+	local impulse = Vector3.new(velocity.X * scalar.X, velocity.Y * scalar.Y, velocity.Z * scalar.Z)
+	self.context.outbound:fire("DamageImpulse", target, impulse)
+end
+
 function ProjectileService.new(context): typeof(ProjectileService)
 	return setmetatable({
 		context = context,
@@ -628,6 +653,20 @@ HIT_BEHAVIORS.Teleporter = {
 	end,
 	onEnvironmentHit = function(self: ProjectileServiceState, projectile: Projectile, _: Vector3)
 		teleportShooter(self, projectile, projectile.position)
+		return false
+	end,
+}
+
+-- Fish (FishingRod): no damage — pulls the hooked player toward the caster
+-- with the recovered KnockbackScalar impulse. The hook does not weld
+-- (WeldOnCollide = false), so environment hits clean the visual up. Its 1 s
+-- cooldown and RequiresAmmo = false come from the item definition.
+HIT_BEHAVIORS.Fish = {
+	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
+		pullPlayer(self, projectile, target)
+		return false
+	end,
+	onEnvironmentHit = function(_: ProjectileServiceState, _: Projectile, _: Vector3)
 		return false
 	end,
 }
