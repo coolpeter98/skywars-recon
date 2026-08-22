@@ -219,6 +219,16 @@ end
 -- ExplosionParticles definition. The client renders flight ParticleTrails
 -- itself, but no client code consumes ExplosionParticles, so the server owns
 -- every impact burst (explosions, snowball impacts, ...); it is cosmetic only.
+--
+-- The burst is produced through continuous emission (a high Rate for a few
+-- frames, then Rate 0): ParticleEmitter:Emit() calls made on the server do
+-- not replicate to clients, while regular emission does. The anchor must
+-- stay alive until the last emitted particle's lifetime expires — destroying
+-- it earlier kills the remaining visible particles.
+local BURST_EMIT_SECONDS = 0.1
+local BURST_DEFAULT_COUNT = 50
+local BURST_DEFAULT_LIFETIME = NumberRange.new(0.5, 1)
+
 local function spawnParticleBurst(position: Vector3, config: { [string]: any }?)
 	if config == nil then
 		return
@@ -239,16 +249,23 @@ local function spawnParticleBurst(position: Vector3, config: { [string]: any }?)
 	emitter.Color = config.Color
 	emitter.Size = config.Size
 	emitter.Acceleration = config.Acceleration
-	emitter.Lifetime = config.Lifetime or NumberRange.new(0.5, 1)
+	emitter.Lifetime = config.Lifetime or BURST_DEFAULT_LIFETIME
 	emitter.Rotation = config.Rotation or NumberRange.new(0, 360)
 	emitter.SpreadAngle = config.SpreadAngle or Vector2.new(180, 180)
 	emitter.LightInfluence = config.LightInfluence
 	emitter.LightEmission = config.LightEmission
 	emitter.Speed = if type(config.Speed) == "number" then NumberRange.new(config.Speed) else NumberRange.new(5)
-	emitter.Rate = 0
+	emitter.Rate = (config.Count or BURST_DEFAULT_COUNT) / BURST_EMIT_SECONDS
+	emitter.Enabled = true
 	emitter.Parent = anchor
-	emitter:Emit(config.Count or 50)
-	task.delay(1.5, function()
+
+	local maxLifetime = emitter.Lifetime.Max
+	task.delay(BURST_EMIT_SECONDS, function()
+		if anchor.Parent ~= nil then
+			emitter.Rate = 0
+		end
+	end)
+	task.delay(BURST_EMIT_SECONDS + maxLifetime + 0.2, function()
 		anchor:Destroy()
 	end)
 end
