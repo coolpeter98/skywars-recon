@@ -365,15 +365,6 @@ local function pullPlayer(self: ProjectileServiceState, projectile: Projectile, 
 	self.context.outbound:fire("DamageImpulse", target, impulse)
 end
 
-function ProjectileService.new(context): typeof(ProjectileService)
-	return setmetatable({
-		context = context,
-		activeProjectiles = {} :: { [string]: Projectile },
-		heartbeatConnection = nil :: RBXScriptConnection?,
-		started = false,
-	}, ProjectileService)
-end
-
 -- Cooldowns live in CombatService's shared registry (one system for every
 -- combat action). Replicated cooldowns reach the client through
 -- CooldownUpdated, keyed by the held weapon's item name.
@@ -588,6 +579,17 @@ function ProjectileService.stop(self)
 		self.heartbeatConnection = nil
 	end
 	self:clearAll()
+end
+
+-- Constructs a service instance. Declared after the method definitions so
+-- `typeof(ProjectileService)` captures the complete service type.
+function ProjectileService.new(context): typeof(ProjectileService)
+	return setmetatable({
+		context = context,
+		activeProjectiles = {} :: { [string]: Projectile },
+		heartbeatConnection = nil :: RBXScriptConnection?,
+		started = false,
+	}, ProjectileService)
 end
 
 -- Extension point: registers or replaces the hit behavior for a projectile
