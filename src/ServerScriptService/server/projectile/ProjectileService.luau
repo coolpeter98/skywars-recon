@@ -667,21 +667,18 @@ end
 -- fixed projectile knockback impulse through CombatService's zero-damage
 -- path, and bursts with its recovered ExplosionParticles on every impact
 -- (the client plays its ImpactSound and renders the flight trail itself).
--- The recovered burst is right in spirit — snow specks that shrink like
--- melting snow — but 20 near-white particles starting at 0.2 studs wash out
--- against the bright placeholder sky, so it renders at 2x size/speed/count
--- and unlit (LightInfluence 0) to make the white read; the melting curve is
--- preserved. WeldOnCollide = false, so environment hits clean the visual up.
--- Its 0.5 s cooldown and speed come from the item definition automatically.
-local SNOWBALL_BURST_SCALE = 2
+-- The burst uses the recovered config as-is — the earlier invisibility was
+-- the nil-Acceleration assignment error, not the config. WeldOnCollide =
+-- false, so environment hits clean the visual up. Its 0.5 s cooldown and
+-- speed come from the item definition automatically.
 HIT_BEHAVIORS.Snowball = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
 		dealPlayerHit(self, projectile, target)
-		spawnParticleBurst(projectile.position, projectile.data.ExplosionParticles, SNOWBALL_BURST_SCALE, 0)
+		spawnParticleBurst(projectile.position, projectile.data.ExplosionParticles)
 		return false
 	end,
 	onEnvironmentHit = function(_: ProjectileServiceState, projectile: Projectile, position: Vector3)
-		spawnParticleBurst(position, projectile.data.ExplosionParticles, SNOWBALL_BURST_SCALE, 0)
+		spawnParticleBurst(position, projectile.data.ExplosionParticles)
 		return false
 	end,
 }
