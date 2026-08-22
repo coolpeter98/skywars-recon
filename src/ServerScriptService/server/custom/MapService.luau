@@ -65,6 +65,12 @@ export type LoadedMap = {
 -- placeholder template — is placed at this world position; the rest of the
 -- map keeps its saved offsets.
 local MAP_ORIGIN = Vector3.new(0, 300, 0)
+-- The client's block grid places block centers on world multiples of 3, so
+-- block bottoms land on Y ≡ 1.5 (mod 3). Real maps store their build
+-- surfaces (chest floors, island decks) at local Y ≡ 1.5 (mod 3); anchoring
+-- the map's Spawn point at MAP_ORIGIN would land those surfaces at ≡ 0
+-- (mod 3), exactly 1.5 studs off the grid, so maps are shifted down 1.5.
+local MAP_GRID_Y_OFFSET = Vector3.new(0, -1.5, 0)
 local ACTIVE_MAP_NAME = "ActiveGameMap"
 local BLOCK_SIZE = 3
 local BUILD_HORIZONTAL_PADDING = 36
@@ -334,7 +340,7 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	map:SetAttribute("Placeholder", false)
 
 	-- Identity rotation: map geometry is axis-aligned in its saved space.
-	local rootCFrame = CFrame.new(MAP_ORIGIN - anchorPosition)
+	local rootCFrame = CFrame.new(MAP_ORIGIN - anchorPosition + MAP_GRID_Y_OFFSET)
 	map:PivotTo(rootCFrame)
 	map.Parent = blockContainer
 
@@ -413,9 +419,14 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 					for _, cframeValue in tierGroup:GetChildren() do
 						if cframeValue:IsA("CFrameValue") then
 							chestIndex += 1
+							-- The prefab's lock sits on its +Z side, opposite the
+							-- map generator's convention (the map's own chests
+							-- face their lock along the CFrameValue's look
+							-- vector), so yaw the prefab 180° after the value's
+							-- rotation.
 							createChest(
 								("Chest_T%d_%d"):format(tier, chestIndex),
-								rootCFrame * cframeValue.Value,
+								rootCFrame * cframeValue.Value * CFrame.Angles(0, math.pi, 0),
 								tier,
 								map,
 								0
