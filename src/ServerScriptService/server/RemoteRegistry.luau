@@ -9,13 +9,23 @@ type RemoteMap = { [string]: RemoteEvent }
 local RemoteRegistry = {}
 RemoteRegistry.__index = RemoteRegistry
 
+-- Remotes are discovered by their id ATTRIBUTE, never by name (the client
+-- waitByAttribute's each UUID). If a half-synced or damaged place is missing
+-- the namespace folder or any remote, recreate them here rather than failing:
+-- the server boots, the client finds every UUID, and nothing can strand a
+-- player mid-boot. The attribute is the wire contract; the Name is cosmetic.
 local function resolveNamespace(namespaceName: string, expectedById: { [string]: string }): RemoteMap
 	local namespace = ReplicatedStorage:FindFirstChild(namespaceName)
 	if namespace == nil then
-		error(("[Server] Missing remote namespace '%s'"):format(namespaceName))
+		warn(("[Server] Remote namespace '%s' is missing from the place — recreating it"):format(namespaceName))
+		namespace = Instance.new("Folder")
+		namespace.Name = namespaceName
+		namespace:SetAttribute("id", namespaceName)
+		namespace.Parent = ReplicatedStorage
 	end
 	if namespace:GetAttribute("id") ~= namespaceName then
-		error(("[Server] Remote namespace '%s' has an invalid id attribute"):format(namespaceName))
+		warn(("[Server] Remote namespace '%s' has an invalid id attribute — repairing it"):format(namespaceName))
+		namespace:SetAttribute("id", namespaceName)
 	end
 
 	local byId: RemoteMap = {}
@@ -35,7 +45,12 @@ local function resolveNamespace(namespaceName: string, expectedById: { [string]:
 
 	for id, name in expectedById do
 		if byId[id] == nil then
-			error(("[Server] Missing remote '%s' (%s) in namespace '%s'"):format(name, id, namespaceName))
+			warn(("[Server] Remote '%s' (%s) is missing — recreating it"):format(name, id))
+			local remote = Instance.new("RemoteEvent")
+			remote.Name = id
+			remote:SetAttribute("id", id)
+			remote.Parent = namespace
+			byId[id] = remote
 		end
 	end
 	return byId
