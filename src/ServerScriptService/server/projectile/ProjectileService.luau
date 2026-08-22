@@ -225,14 +225,25 @@ end
 -- not replicate to clients, while regular emission does. The anchor must
 -- stay alive until the last emitted particle's lifetime expires — destroying
 -- it earlier kills the remaining visible particles.
+--
+-- `scale` and `lightInfluence` are optional presentation overrides (size,
+-- speed and count all follow `scale`; the size curve's shape — e.g. snow
+-- melting — is preserved since every keypoint scales together). The
+-- recovered config itself is never rewritten.
 local BURST_EMIT_SECONDS = 0.1
 local BURST_DEFAULT_COUNT = 50
 local BURST_DEFAULT_LIFETIME = NumberRange.new(0.5, 1)
 
-local function spawnParticleBurst(position: Vector3, config: { [string]: any }?)
+local function spawnParticleBurst(
+	position: Vector3,
+	config: { [string]: any }?,
+	scale: number?,
+	lightInfluence: number?
+)
 	if config == nil then
 		return
 	end
+	scale = scale or 1
 	local anchor = Instance.new("Part")
 	anchor.Name = "ImpactFx"
 	anchor.Anchored = true
@@ -247,15 +258,28 @@ local function spawnParticleBurst(position: Vector3, config: { [string]: any }?)
 
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Color = config.Color
-	emitter.Size = config.Size
+	if config.Size ~= nil and scale ~= 1 then
+		local keypoints = {}
+		for _, keypoint in config.Size.Keypoints do
+			table.insert(
+				keypoints,
+				NumberSequenceKeypoint.new(keypoint.Time, keypoint.Value * scale, keypoint.Envelope)
+			)
+		end
+		emitter.Size = NumberSequence.new(keypoints)
+	else
+		emitter.Size = config.Size
+	end
 	emitter.Acceleration = config.Acceleration
 	emitter.Lifetime = config.Lifetime or BURST_DEFAULT_LIFETIME
 	emitter.Rotation = config.Rotation or NumberRange.new(0, 360)
 	emitter.SpreadAngle = config.SpreadAngle or Vector2.new(180, 180)
-	emitter.LightInfluence = config.LightInfluence
+	emitter.LightInfluence = lightInfluence or config.LightInfluence
 	emitter.LightEmission = config.LightEmission
-	emitter.Speed = if type(config.Speed) == "number" then NumberRange.new(config.Speed) else NumberRange.new(5)
-	emitter.Rate = (config.Count or BURST_DEFAULT_COUNT) / BURST_EMIT_SECONDS
+	emitter.Speed = if type(config.Speed) == "number"
+		then NumberRange.new(config.Speed * scale)
+		else NumberRange.new(5 * scale)
+	emitter.Rate = (config.Count or BURST_DEFAULT_COUNT) * scale / BURST_EMIT_SECONDS
 	emitter.Enabled = true
 	emitter.Parent = anchor
 
@@ -625,16 +649,21 @@ end
 -- fixed projectile knockback impulse through CombatService's zero-damage
 -- path, and bursts with its recovered ExplosionParticles on every impact
 -- (the client plays its ImpactSound and renders the flight trail itself).
--- WeldOnCollide = false, so environment hits clean the visual up. Its 0.5 s
--- cooldown and speed come from the item definition automatically.
+-- The recovered burst is right in spirit — snow specks that shrink like
+-- melting snow — but 20 near-white particles starting at 0.2 studs wash out
+-- against the bright placeholder sky, so it renders at 2x size/speed/count
+-- and unlit (LightInfluence 0) to make the white read; the melting curve is
+-- preserved. WeldOnCollide = false, so environment hits clean the visual up.
+-- Its 0.5 s cooldown and speed come from the item definition automatically.
+local SNOWBALL_BURST_SCALE = 2
 HIT_BEHAVIORS.Snowball = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
 		dealPlayerHit(self, projectile, target)
-		spawnParticleBurst(projectile.position, projectile.data.ExplosionParticles)
+		spawnParticleBurst(projectile.position, projectile.data.ExplosionParticles, SNOWBALL_BURST_SCALE, 0)
 		return false
 	end,
 	onEnvironmentHit = function(_: ProjectileServiceState, projectile: Projectile, position: Vector3)
-		spawnParticleBurst(position, projectile.data.ExplosionParticles)
+		spawnParticleBurst(position, projectile.data.ExplosionParticles, SNOWBALL_BURST_SCALE, 0)
 		return false
 	end,
 }
