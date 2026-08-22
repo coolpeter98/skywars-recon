@@ -1,12 +1,14 @@
 --!strict
--- BlockGeometry — pure voxel math for mining into greedy-meshed block
+-- BlockGeometry — pure voxel math for mining/exploding greedy-meshed block
 -- geometry. No Roblox dependencies, so the whole module can be unit-tested
 -- under Lune.
 --
 -- The recovered maps store runs of same-material block cells as one
 -- axis-aligned Part (greedy meshing); only the exposed faces carry textures
--- (face culling). Mining one cell therefore means carving the cell out of
--- the merged box and re-deciding which of the remaining faces are visible.
+-- (face culling), and faces whose material lacks a texture for that
+-- orientation stay plain (measured: the original Airport map has 723
+-- partially-covered textured faces — full-face overdraw is the map's own
+-- visual style).
 --
 -- Cell coordinates are plain tables { X: number, Y: number, Z: number }
 -- (Roblox Vector3 values satisfy the same shape, so callers may pass either).
@@ -22,88 +24,79 @@ export type BoxRange = {
 	maxZ: number,
 }
 
-export type FaceDescription = {
-	Face: string, -- NormalId name ("Right", "Top", ...)
-	Axis: "X" | "Y" | "Z",
-	EdgeCell: number, -- cell index of the box edge the face sits on
-	Sign: number, -- +1: faces the positive axis, -1: faces the negative axis
-	IsExterior: boolean, -- the face lies on the old part's outer boundary
-	BordersMined: boolean, -- the face is directly adjacent to the mined cell
-}
-
 export type BlockGeometry = {
-	decomposeBox: (oldRange: BoxRange, mined: Cell) -> { BoxRange },
+	decomposeBoxMinusBox: (range: BoxRange, innerMin: Cell, innerMax: Cell) -> { BoxRange },
 	boxCenter: (box: BoxRange) -> Cell,
 	boxExtents: (box: BoxRange) -> Cell,
 	cellInBox: (cell: Cell, box: BoxRange) -> boolean,
-	describeFaces: (box: BoxRange, oldRange: BoxRange, mined: Cell) -> { FaceDescription },
 }
 
 local BlockGeometry: BlockGeometry = {}
 
--- The standard box-minus-one-cell decomposition: up to six axis-aligned
--- boxes that together cover exactly `oldRange` minus the mined cell.
-function BlockGeometry.decomposeBox(oldRange: BoxRange, mined: Cell): { BoxRange }
+-- Decomposes `range` minus the inner box [innerMin..innerMax] into up to six
+-- axis-aligned boxes (the standard box-minus-box slab decomposition). The
+-- inner box must lie within the range; a single-cell inner box gives the
+-- classic box-minus-cell decomposition.
+function BlockGeometry.decomposeBoxMinusBox(range: BoxRange, innerMin: Cell, innerMax: Cell): { BoxRange }
 	local boxes: { BoxRange } = {}
-	local cx, cy, cz = mined.X, mined.Y, mined.Z
-	if cx - 1 >= oldRange.minX then
+	if innerMin.X - 1 >= range.minX then
 		table.insert(boxes, {
-			minX = oldRange.minX,
-			maxX = cx - 1,
-			minY = oldRange.minY,
-			maxY = oldRange.maxY,
-			minZ = oldRange.minZ,
-			maxZ = oldRange.maxZ,
+			minX = range.minX,
+			maxX = innerMin.X - 1,
+			minY = range.minY,
+			maxY = range.maxY,
+			minZ = range.minZ,
+			maxZ = range.maxZ,
 		})
 	end
-	if cx + 1 <= oldRange.maxX then
+	if innerMax.X + 1 <= range.maxX then
 		table.insert(boxes, {
-			minX = cx + 1,
-			maxX = oldRange.maxX,
-			minY = oldRange.minY,
-			maxY = oldRange.maxY,
-			minZ = oldRange.minZ,
-			maxZ = oldRange.maxZ,
+			minX = innerMax.X + 1,
+			maxX = range.maxX,
+			minY = range.minY,
+			maxY = range.maxY,
+			minZ = range.minZ,
+			maxZ = range.maxZ,
 		})
 	end
-	if cy - 1 >= oldRange.minY then
+	if innerMin.Y - 1 >= range.minY then
 		table.insert(boxes, {
-			minX = cx,
-			maxX = cx,
-			minY = oldRange.minY,
-			maxY = cy - 1,
-			minZ = oldRange.minZ,
-			maxZ = oldRange.maxZ,
+			minX = innerMin.X,
+			maxX = innerMax.X,
+			minY = range.minY,
+			maxY = innerMin.Y - 1,
+			minZ = range.minZ,
+			maxZ = range.maxZ,
 		})
 	end
-	if cy + 1 <= oldRange.maxY then
+	if innerMax.Y + 1 <= range.maxY then
 		table.insert(boxes, {
-			minX = cx,
-			maxX = cx,
-			minY = cy + 1,
-			maxY = oldRange.maxY,
-			minZ = oldRange.minZ,
-			maxZ = oldRange.maxZ,
+			minX = innerMin.X,
+			maxX = innerMax.X,
+			minY = innerMax.Y + 1,
+			maxY = range.maxY,
+			minZ = range.minZ,
+			maxZ = range.maxZ,
 		})
 	end
-	if cz - 1 >= oldRange.minZ then
+	if innerMin.Z - 1 >= range.minZ then
 		table.insert(boxes, {
-			minX = cx,
-			maxX = cx,
-			minY = cy,
-			maxY = cy,
-			minZ = oldRange.minZ,
-			maxZ = cz - 1,
+			minX = innerMin.X,
+			maxX = innerMax.X,
+			minY = innerMin.Y,
+			maxY = innerMax.Y,
+			minZ = range.minZ,
+			maxZ = innerMin.Z - 1,
 		})
 	end
-	if cz + 1 <= oldRange.maxZ then
+	if innerMax.Z + 1 <= range.maxZ then
 		table.insert(boxes, {
-			minX = cx,
-			maxX = cx,
-			minY = cy,
-			maxY = cy,
-			minZ = cz + 1,
-			maxZ = oldRange.maxZ,
+			minX = innerMin.X,
+			maxX = innerMax.X,
+			minY = innerMin.Y,
+			maxY = innerMax.Y,
+			minZ = innerMax.Z + 1,
+			maxZ = range.maxZ,
 		})
 	end
 	return boxes
@@ -132,65 +125,6 @@ function BlockGeometry.cellInBox(cell: Cell, box: BoxRange): boolean
 		and cell.Y <= box.maxY
 		and cell.Z >= box.minZ
 		and cell.Z <= box.maxZ
-end
-
-local FACE_LAYOUT: { { Face: string, Axis: "X" | "Y" | "Z", Sign: number, EdgeIsMax: boolean } } = {
-	{ Face = "Right", Axis = "X", Sign = 1, EdgeIsMax = true },
-	{ Face = "Left", Axis = "X", Sign = -1, EdgeIsMax = false },
-	{ Face = "Top", Axis = "Y", Sign = 1, EdgeIsMax = true },
-	{ Face = "Bottom", Axis = "Y", Sign = -1, EdgeIsMax = false },
-	{ Face = "Back", Axis = "Z", Sign = 1, EdgeIsMax = true },
-	{ Face = "Front", Axis = "Z", Sign = -1, EdgeIsMax = false },
-}
-
-local function getRangeEdge(range: BoxRange, axis: "X" | "Y" | "Z", isMax: boolean): number
-	if axis == "X" then
-		return if isMax then range.maxX else range.minX
-	elseif axis == "Y" then
-		return if isMax then range.maxY else range.minY
-	else
-		return if isMax then range.maxZ else range.minZ
-	end
-end
-
--- Describes the six faces of a replacement box for re-culling. The caller
--- textures a face when `BordersMined` is set (the face forms part of the new
--- hole) or when `IsExterior` is set and the old part had that face textured.
--- Fresh interior cuts — the planes where the old part was carved apart —
--- stay untextured, matching the map's original culling.
-function BlockGeometry.describeFaces(box: BoxRange, oldRange: BoxRange, mined: Cell): { FaceDescription }
-	local faces: { FaceDescription } = {}
-	for _, layout in FACE_LAYOUT do
-		local edgeCell = getRangeEdge(box, layout.Axis, layout.EdgeIsMax)
-		local adjacentCell = edgeCell + layout.Sign
-		local axisMatches = (layout.Axis == "X" and adjacentCell == mined.X)
-			or (layout.Axis == "Y" and adjacentCell == mined.Y)
-			or (layout.Axis == "Z" and adjacentCell == mined.Z)
-		local tangentSpanContains = (
-			layout.Axis == "X"
-			and mined.Y >= box.minY
-			and mined.Y <= box.maxY
-			and mined.Z >= box.minZ
-			and mined.Z <= box.maxZ
-		)
-			or (layout.Axis == "Y" and mined.X >= box.minX and mined.X <= box.maxX and mined.Z >= box.minZ and mined.Z <= box.maxZ)
-			or (
-				layout.Axis == "Z"
-				and mined.X >= box.minX
-				and mined.X <= box.maxX
-				and mined.Y >= box.minY
-				and mined.Y <= box.maxY
-			)
-		table.insert(faces, {
-			Face = layout.Face,
-			Axis = layout.Axis,
-			EdgeCell = edgeCell,
-			Sign = layout.Sign,
-			IsExterior = getRangeEdge(oldRange, layout.Axis, layout.EdgeIsMax) == edgeCell,
-			BordersMined = axisMatches and tangentSpanContains,
-		})
-	end
-	return faces
 end
 
 return BlockGeometry

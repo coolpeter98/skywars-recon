@@ -30,6 +30,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Attribute = require(ReplicatedStorage.TS.attribute).Attribute
+local BlockConstants = require(ReplicatedStorage.TS.block["block-constants"]).BlockConstants
 local Items = require(ReplicatedStorage.TS.item.item).Items
 local ProjectileConstants = require(ReplicatedStorage.TS.projectile["projectile-constants"]).ProjectileConstants
 local WorldConstants = require(ReplicatedStorage.TS.world["world-constants"]).WorldConstants
@@ -40,6 +41,11 @@ local MAX_PROJECTILE_LIFETIME = 10
 local MAX_SEGMENT_LENGTH = 2
 local MAX_STEP_DELTA = 0.25
 local MAX_PREDICTION_ID_LENGTH = 64
+
+-- The client's block grid: one block cell is a 3-stud cube. The recovered
+-- projectile ExplosionRadius is expressed in block units (Capybara and
+-- Dynamite both carry 3 → a sphere roughly six blocks side-to-side).
+local BLOCK_SIZE: number = BlockConstants.BLOCK_SIZE
 
 -- The subset of the shared item module's projectile definition this service
 -- reads. The full definitions carry cosmetic fields (particles, sounds,
@@ -375,10 +381,25 @@ local function explodeDamage(self: ProjectileServiceState, projectile: Projectil
 	end
 end
 
+-- Carves a spherical hole out of the voxel world around the impact point.
+-- The recovered ExplosionRadius is in block units (3 → roughly six blocks
+-- side-to-side); the block world re-culls the carved faces through the same
+-- split/re-cull path pickaxe mining uses. Player-placed blocks are carved
+-- like map blocks, and nothing is granted to the shooter — explosions
+-- destroy, they do not gather.
+local function breakBlocks(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
+	local blockWorldService = self.context.blockWorldService
+	local explosionRadius = projectile.data.ExplosionRadius
+	if blockWorldService == nil or explosionRadius == nil or explosionRadius <= 0 then
+		return
+	end
+	blockWorldService:mineExplosion(position, explosionRadius * BLOCK_SIZE)
+end
+
 -- Shared explosion entry point for explosive projectiles: one-time sound and
--- particle burst at the impact point, AoE knockback, and optional AoE damage
--- (Dynamite none, Capybara linear falloff). Block breaking is intentionally
--- not implemented yet (the placeholder map is not chunked).
+-- particle burst at the impact point, AoE knockback, optional AoE damage
+-- (Dynamite none, Capybara linear falloff), and a spherical block carve
+-- (ExplosionRadius, in blocks) through the voxel world.
 local function explode(self: ProjectileServiceState, projectile: Projectile, position: Vector3, damage: number?)
 	playExplosionSound(self, projectile, position)
 	spawnParticleBurst(position, projectile.data.ExplosionParticles)
@@ -386,6 +407,7 @@ local function explode(self: ProjectileServiceState, projectile: Projectile, pos
 	if damage ~= nil and damage > 0 then
 		explodeDamage(self, projectile, position, damage)
 	end
+	breakBlocks(self, projectile, position)
 end
 
 -- Moves the shooter's character to the projectile's impact point, exactly as
@@ -683,9 +705,10 @@ HIT_BEHAVIORS.Snowball = {
 	end,
 }
 
--- Dynamite: a pure knockback explosion — Projectile.Damage = 0, so the blast
--- only shoves within KnockbackRadius (no block damage yet). Explodes on any
--- collision, player or environment.
+-- Dynamite: a knockback explosion with no damage — Projectile.Damage = 0,
+-- so the blast shoves within KnockbackRadius and carves a spherical hole in
+-- the block world (ExplosionRadius, in blocks). Explodes on any collision,
+-- player or environment.
 HIT_BEHAVIORS.Dynamite = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, _: Player)
 		explode(self, projectile, projectile.position)
@@ -699,7 +722,8 @@ HIT_BEHAVIORS.Dynamite = {
 
 -- Capybara: an explosive AoE — Projectile.Damage = 50 applied with a linear
 -- falloff across ExplosionRadius (3), plus the same full-impulse knockback
--- blast as Dynamite within KnockbackRadius (5). No block breaking yet.
+-- blast as Dynamite within KnockbackRadius (5), plus a spherical block carve
+-- (ExplosionRadius, in blocks) through the voxel world.
 HIT_BEHAVIORS.Capybara = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, _: Player)
 		explode(self, projectile, projectile.position, projectile.data.Damage)

@@ -6,25 +6,32 @@
 -- carry tiled textures (StudsPerTile = 3, offset 0, one id per
 -- material + face across the whole map) and whose hidden faces are
 -- texture-culled. This service reconstructs the voxel grid from those parts
--- and re-meshes locally when a cell is mined:
+-- and re-meshes locally when cells are removed:
 --
 --   * every block cell is indexed (cell index = world position / 3) to its
 --     owning part, item type, and break time;
---   * mining a single-cell part destroys it outright;
---   * mining a cell inside a merged part replaces the part with up to six
---     axis-aligned boxes (the standard box-minus-cell decomposition, see
---     BlockGeometry) and re-culls their faces: a face is textured when it
---     borders the mined cell or when it belongs to the old part's textured
---     exterior;
---   * faces of neighbouring parts that the mined cell used to hide get
---     their texture back (the original map only textures exposed faces).
+--   * removals (pickaxe breaks remove one cell; explosions remove a whole
+--     sphere) are BATCHED: every part that lost a cell is rebuilt exactly
+--     once, and all affected parts are destroyed before any replacement
+--     geometry is created, so the replication burst never shows old and new
+--     geometry overlapping (the cause of carve flicker);
+--   * replacement faces follow the recovered map's own culling rules: a
+--     face is textured when any part of it borders air (or a removed cell)
+--     and the material ships a texture for that orientation — full-face
+--     overdraw on covered patches is the map's style (the shipped Airport
+--     has 723 such partially-covered textured faces); cells inside the
+--     removed region's bounding box become individual 3x3x3 parts whose 1x1
+--     faces cull exactly, and the part's remainder outside the box rebuilds
+--     as up to six slabs;
+--   * faces of neighbouring parts that a removed cell used to hide get
+--     their texture back.
 --
 -- Player-placed blocks register here too, so mining them goes through the
 -- same path. Break progress is accumulated from the client's repeated
 -- HitBlock events (fired once per heartbeat while the mouse is held on a
 -- block) and replicated back through BlockBreakProgress (crack overlay),
 -- BlockBreakStatusCleared, and BlockRemoved. When a block breaks, the mined
--- item is granted to the miner's inventory.
+-- item is granted to the miner's inventory (explosions grant nothing).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -70,14 +77,15 @@ local GRID_TOLERANCE = 0.01
 local SWEEP_INTERVAL_FRAMES = 30
 
 -- Neighbour offsets (in cells) and the NormalId name of the neighbour's
--- face that faces the mined cell.
+-- face that faces the mined cell (a neighbour at +Z shows its -Z face,
+-- which Roblox calls Front).
 local NEIGHBOUR_FACES = {
 	{ Offset = Vector3.new(1, 0, 0), Face = "Left" },
 	{ Offset = Vector3.new(-1, 0, 0), Face = "Right" },
 	{ Offset = Vector3.new(0, 1, 0), Face = "Bottom" },
 	{ Offset = Vector3.new(0, -1, 0), Face = "Top" },
-	{ Offset = Vector3.new(0, 0, 1), Face = "Back" },
-	{ Offset = Vector3.new(0, 0, -1), Face = "Front" },
+	{ Offset = Vector3.new(0, 0, 1), Face = "Front" },
+	{ Offset = Vector3.new(0, 0, -1), Face = "Back" },
 }
 
 local NORMAL_IDS: { [string]: Enum.NormalId } = {
@@ -88,6 +96,64 @@ local NORMAL_IDS: { [string]: Enum.NormalId } = {
 	Back = Enum.NormalId.Back,
 	Front = Enum.NormalId.Front,
 }
+
+-- A part's own faces by world direction (Roblox NormalId convention).
+local PART_FACES = {
+	{ Face = "Right", Axis = "X", EdgeIsMax = true },
+	{ Face = "Left", Axis = "X", EdgeIsMax = false },
+	{ Face = "Top", Axis = "Y", EdgeIsMax = true },
+	{ Face = "Bottom", Axis = "Y", EdgeIsMax = false },
+	{ Face = "Back", Axis = "Z", EdgeIsMax = true },
+	{ Face = "Front", Axis = "Z", EdgeIsMax = false },
+}
+
+local function getBoxEdge(box: BlockGeometry.BoxRange, axis: string, isMax: boolean): number
+	if axis == "X" then
+		return if isMax then box.maxX else box.minX
+	elseif axis == "Y" then
+		return if isMax then box.maxY else box.minY
+	else
+		return if isMax then box.maxZ else box.minZ
+	end
+end
+
+-- Visits every cell adjacent across the given box face.
+local function iterateAcrossCells(
+	box: BlockGeometry.BoxRange,
+	axis: string,
+	edgeCell: number,
+	sign: number,
+	visit: (cell: Vector3) -> ()
+)
+	if axis == "X" then
+		for y = box.minY, box.maxY do
+			for z = box.minZ, box.maxZ do
+				visit(Vector3.new(edgeCell + sign, y, z))
+			end
+		end
+	elseif axis == "Y" then
+		for x = box.minX, box.maxX do
+			for z = box.minZ, box.maxZ do
+				visit(Vector3.new(x, edgeCell + sign, z))
+			end
+		end
+	else
+		for x = box.minX, box.maxX do
+			for y = box.minY, box.maxY do
+				visit(Vector3.new(x, y, edgeCell + sign))
+			end
+		end
+	end
+end
+
+local function isWithinRange(cell: Vector3, rangeMin: Vector3, rangeMax: Vector3): boolean
+	return cell.X >= rangeMin.X
+		and cell.X <= rangeMax.X
+		and cell.Y >= rangeMin.Y
+		and cell.Y <= rangeMax.Y
+		and cell.Z >= rangeMin.Z
+		and cell.Z <= rangeMax.Z
+end
 
 local BlockWorldService = {}
 BlockWorldService.__index = BlockWorldService
@@ -372,57 +438,120 @@ function BlockWorldService.registerHit(self, player: Player, position: Vector3)
 	end
 end
 
--- Removes the block at `position` (a block-cell center). Single-cell parts
--- are destroyed outright; merged parts are split into up to six boxes around
--- the mined cell with their faces re-culled. Returns the mined item type.
-function BlockWorldService.mineCell(self, position: Vector3): string?
-	local key = keyForPosition(position)
-	local entry = self.cells[key]
-	if entry == nil then
-		return nil
+-- Carves a spherical explosion out of the voxel world: every block whose
+-- cell center lies within `radiusStuds` of `position` is removed in ONE
+-- batched pass (no items are granted — the blast destroys, it does not
+-- gather). Returns the number of blocks destroyed.
+function BlockWorldService.mineExplosion(self, position: Vector3, radiusStuds: number): number
+	if radiusStuds <= 0 or radiusStuds ~= radiusStuds or radiusStuds == math.huge then
+		return 0
 	end
-	self.cells[key] = nil
-	local part = entry.part
-	if part.Parent == nil then
+	local scaledCenter = position / BLOCK_SIZE
+	local radiusCells = radiusStuds / BLOCK_SIZE
+	local removedPositions: { Vector3 } = {}
+	local minX = math.floor(scaledCenter.X - radiusCells)
+	local maxX = math.ceil(scaledCenter.X + radiusCells)
+	local minY = math.floor(scaledCenter.Y - radiusCells)
+	local maxY = math.ceil(scaledCenter.Y + radiusCells)
+	local minZ = math.floor(scaledCenter.Z - radiusCells)
+	local maxZ = math.ceil(scaledCenter.Z + radiusCells)
+	for x = minX, maxX do
+		for y = minY, maxY do
+			for z = minZ, maxZ do
+				local cellCenter = Vector3.new(x * BLOCK_SIZE, y * BLOCK_SIZE, z * BLOCK_SIZE)
+				if (cellCenter - position).Magnitude <= radiusStuds then
+					table.insert(removedPositions, cellCenter)
+				end
+			end
+		end
+	end
+	return self:removeBlocks(removedPositions)
+end
+
+-- Removes the block at `position` (a block-cell center). The affected part
+-- is rebuilt in one pass (see removeBlocks). Returns the mined item type.
+function BlockWorldService.mineCell(self, position: Vector3): string?
+	local entry = self.cells[keyForPosition(position)]
+	if entry == nil or entry.part.Parent == nil then
 		return nil
 	end
 	local itemType = entry.itemType
-	if part.Size == BLOCK_DIMENSION then
-		part:Destroy()
-	else
-		self:splitPart(part, position)
+	if self:removeBlocks({ position }) == 0 then
+		return nil
 	end
-	self:exposeNeighbourFaces(position)
 	return itemType
 end
 
--- Replaces a merged part with up to six boxes around the mined cell, then
--- re-culls their faces. The replacement parts keep the old part's name,
--- material, color, transparency, surface, and physical flags, and live under
--- the same parent.
-function BlockWorldService.splitPart(self, part: BasePart, minedPosition: Vector3)
+-- Batched block removal (pickaxe breaks remove one cell; explosions remove
+-- a whole sphere). Every part that lost a cell is rebuilt exactly ONCE, and
+-- all affected parts are destroyed BEFORE any replacement geometry is
+-- created — during replication the client never sees old and new geometry
+-- overlapping (the source of the carve flicker).
+--
+-- Replacement geometry follows the recovered map's own culling rules: a
+-- face is textured when any part of it borders air or a removed cell and
+-- the material has a texture for that orientation (full-face overdraw on
+-- covered patches is the map's style); faces between two blocks stay
+-- untextured. Cells inside the removed region's bounding box become
+-- individual 3x3x3 parts (their 1x1 faces cull exactly, so the crater
+-- interior is overdraw-free); the part's remainder outside that box is
+-- rebuilt as up to six slabs.
+function BlockWorldService.removeBlocks(self, removedPositions: { Vector3 }): number
+	local removedKeys = {} :: { [string]: Vector3 }
+	local affectedList = {} :: { { itemType: string, part: BasePart, removed: { Vector3 } } }
+	local affectedIndexByPart = {} :: { [BasePart]: number }
+	for _, position in removedPositions do
+		local key = keyForPosition(position)
+		local entry = self.cells[key]
+		if entry ~= nil and entry.part.Parent ~= nil and removedKeys[key] == nil then
+			removedKeys[key] = position
+			local affectedIndex = affectedIndexByPart[entry.part]
+			if affectedIndex == nil then
+				affectedIndex = #affectedList + 1
+				affectedIndexByPart[entry.part] = affectedIndex
+				affectedList[affectedIndex] = {
+					itemType = entry.itemType,
+					part = entry.part,
+					removed = {},
+				}
+			end
+			table.insert(affectedList[affectedIndex].removed, position)
+		end
+	end
+	if #affectedList == 0 then
+		return 0
+	end
+
+	for _, affected in affectedList do
+		self:remeshPart(affected.part, affected.itemType, affected.removed, removedKeys)
+	end
+
+	-- Faces of neighbouring parts that the removed cells used to hide were
+	-- texture-culled by the generator; re-add the missing ones (full-face,
+	-- per-block tiling — the original map's own overdraw style).
+	local removedCount = 0
+	for key in removedKeys do
+		removedCount += 1
+		self:exposeNeighbourFaces(removedKeys[key])
+	end
+	return removedCount
+end
+
+-- Rebuilds one part that lost cells: captures its presentation, clears its
+-- cells from the index, destroys it, then creates the final replacement
+-- parts (individuals inside the removed bounding box + slabs outside it).
+function BlockWorldService.remeshPart(
+	self,
+	part: BasePart,
+	itemType: string,
+	removed: { Vector3 },
+	removedKeys: { [string]: Vector3 }
+)
 	local minCell, maxCell = getCellRange(part)
 	if minCell == nil or maxCell == nil then
-		-- Unreachable for indexed multi-cell parts; degrade to a plain removal.
 		part:Destroy()
 		return
 	end
-	local minedCell = toCellVector(minedPosition)
-	local oldRange: BlockGeometry.BoxRange = {
-		minX = minCell.X,
-		maxX = maxCell.X,
-		minY = minCell.Y,
-		maxY = maxCell.Y,
-		minZ = minCell.Z,
-		maxZ = maxCell.Z,
-	}
-	local oldTexturedFaces: { [string]: boolean } = {}
-	for _, child in part:GetChildren() do
-		if child:IsA("Texture") and child.Face ~= nil and child.Texture ~= "" then
-			oldTexturedFaces[child.Face.Name] = true
-		end
-	end
-	local itemType = part.Name
 	local parent = part.Parent
 	local material = part.Material
 	local color = part.Color
@@ -432,13 +561,71 @@ function BlockWorldService.splitPart(self, part: BasePart, minedPosition: Vector
 	local topSurface = part.TopSurface
 	local bottomSurface = part.BottomSurface
 
-	for _, box in BlockGeometry.decomposeBox(oldRange, minedCell) do
-		self:createBox(
+	local boxMin = Vector3.new(math.huge, math.huge, math.huge)
+	local boxMax = Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, position in removed do
+		local cell = toCellVector(position)
+		boxMin = Vector3.new(math.min(boxMin.X, cell.X), math.min(boxMin.Y, cell.Y), math.min(boxMin.Z, cell.Z))
+		boxMax = Vector3.new(math.max(boxMax.X, cell.X), math.max(boxMax.Y, cell.Y), math.max(boxMax.Z, cell.Z))
+	end
+	boxMin = Vector3.new(math.max(boxMin.X, minCell.X), math.max(boxMin.Y, minCell.Y), math.max(boxMin.Z, minCell.Z))
+	boxMax = Vector3.new(math.min(boxMax.X, maxCell.X), math.min(boxMax.Y, maxCell.Y), math.min(boxMax.Z, maxCell.Z))
+
+	-- Clear this part's cells before any replacement is indexed.
+	for x = minCell.X, maxCell.X do
+		for y = minCell.Y, maxCell.Y do
+			for z = minCell.Z, maxCell.Z do
+				local key = cellKey(Vector3.new(x, y, z))
+				local entry = self.cells[key]
+				if entry ~= nil and entry.part == part then
+					self.cells[key] = nil
+				end
+			end
+		end
+	end
+	part:Destroy()
+
+	for x = boxMin.X, boxMax.X do
+		for y = boxMin.Y, boxMax.Y do
+			for z = boxMin.Z, boxMax.Z do
+				local cell = Vector3.new(x, y, z)
+				if removedKeys[cellKey(cell)] == nil then
+					self:createReplacementBox(
+						itemType,
+						{ minX = x, maxX = x, minY = y, maxY = y, minZ = z, maxZ = z },
+						removedKeys,
+						minCell,
+						maxCell,
+						parent,
+						material,
+						color,
+						transparency,
+						anchored,
+						canCollide,
+						topSurface,
+						bottomSurface
+					)
+				end
+			end
+		end
+	end
+
+	for _, slab in
+		BlockGeometry.decomposeBoxMinusBox({
+			minX = minCell.X,
+			maxX = maxCell.X,
+			minY = minCell.Y,
+			maxY = maxCell.Y,
+			minZ = minCell.Z,
+			maxZ = maxCell.Z,
+		}, boxMin, boxMax)
+	do
+		self:createReplacementBox(
 			itemType,
-			box,
-			oldRange,
-			minedCell,
-			oldTexturedFaces,
+			slab,
+			removedKeys,
+			minCell,
+			maxCell,
 			parent,
 			material,
 			color,
@@ -449,29 +636,17 @@ function BlockWorldService.splitPart(self, part: BasePart, minedPosition: Vector
 			bottomSurface
 		)
 	end
-	-- Drop the stale entries that still reference the destroyed part (the
-	-- new boxes already re-indexed their cells above).
-	for x = oldRange.minX, oldRange.maxX do
-		for y = oldRange.minY, oldRange.maxY do
-			for z = oldRange.minZ, oldRange.maxZ do
-				local key = cellKey(Vector3.new(x, y, z))
-				local entry = self.cells[key]
-				if entry ~= nil and entry.part == part then
-					self.cells[key] = nil
-				end
-			end
-		end
-	end
-	part:Destroy()
 end
 
-function BlockWorldService.createBox(
+-- Creates one replacement part (a single block or a slab), textures its
+-- faces with the map's culling rule, and indexes its cells.
+function BlockWorldService.createReplacementBox(
 	self,
 	itemType: string,
 	box: BlockGeometry.BoxRange,
-	oldRange: BlockGeometry.BoxRange,
-	minedCell: BlockGeometry.Cell,
-	oldTexturedFaces: { [string]: boolean },
+	removedKeys: { [string]: Vector3 },
+	partMin: Vector3,
+	partMax: Vector3,
 	parent: Instance?,
 	material: Enum.Material,
 	color: Color3,
@@ -496,23 +671,20 @@ function BlockWorldService.createBox(
 	boxPart.BottomSurface = bottomSurface
 	boxPart.Parent = parent
 
-	local faceTable = self.faceTextures[itemType] or {}
-	local fallbackTexture: string? = nil
-	for _, textureId in faceTable do
-		fallbackTexture = textureId
-		break
-	end
-	for _, face in BlockGeometry.describeFaces(box, oldRange, minedCell) do
-		if face.BordersMined or (face.IsExterior and oldTexturedFaces[face.Face] == true) then
-			local textureId = faceTable[face.Face] or fallbackTexture
-			if textureId ~= nil then
-				local texture = Instance.new("Texture")
-				texture.Face = NORMAL_IDS[face.Face]
-				texture.Texture = textureId
-				texture.StudsPerTileU = BLOCK_SIZE
-				texture.StudsPerTileV = BLOCK_SIZE
-				texture.Parent = boxPart
+	for _, face in PART_FACES do
+		local edgeCell = if face.EdgeIsMax then getBoxEdge(box, face.Axis, true) else getBoxEdge(box, face.Axis, false)
+		local sign = if face.EdgeIsMax then 1 else -1
+		local anyExposed = false
+		iterateAcrossCells(box, face.Axis, edgeCell, sign, function(across)
+			local acrossKey = cellKey(across)
+			local occupied = removedKeys[acrossKey] == nil
+				and (isWithinRange(across, partMin, partMax) or self.cells[acrossKey] ~= nil)
+			if not occupied then
+				anyExposed = true
 			end
+		end)
+		if anyExposed then
+			self:addFaceTexture(boxPart, itemType, face.Face)
 		end
 	end
 	self:indexBoxCells(boxPart, itemType, box)
@@ -533,12 +705,27 @@ function BlockWorldService.indexBoxCells(self, boxPart: BasePart, itemType: stri
 	end
 end
 
--- The mined cell used to hide the neighbouring parts' faces, so the map
--- generator texture-culled them. Re-add the texture for each neighbour that
--- lacks one. Tiling is per-block (StudsPerTile = 3, offset 0): merged faces
--- are cell-aligned, so the pattern stays on the global grid, and covered
--- patches stay hidden behind the surrounding blocks exactly like the
--- original map's full-face texturing.
+-- Adds a face texture to a part when the material has one for that face
+-- (materials like Grass only ship a Top texture; their other faces stay
+-- plain, exactly like the recovered map).
+function BlockWorldService.addFaceTexture(self, part: BasePart, itemType: string, faceName: string)
+	local faceTable = self.faceTextures[itemType]
+	local textureId = if faceTable then faceTable[faceName] else nil
+	if textureId == nil then
+		return
+	end
+	local texture = Instance.new("Texture")
+	texture.Face = NORMAL_IDS[faceName]
+	texture.Texture = textureId
+	texture.StudsPerTileU = BLOCK_SIZE
+	texture.StudsPerTileV = BLOCK_SIZE
+	texture.Parent = part
+end
+
+-- The removed cell used to hide the neighbouring part's face, so the map
+-- generator texture-culled it. Re-add the texture when it is missing (the
+-- full-face, per-block tiling overdraws covered patches exactly like the
+-- original map's own partially-covered faces).
 function BlockWorldService.exposeNeighbourFaces(self, position: Vector3)
 	local minedCell = toCellVector(position)
 	for _, neighbour in NEIGHBOUR_FACES do
@@ -555,26 +742,9 @@ function BlockWorldService.exposeNeighbourFaces(self, position: Vector3)
 				break
 			end
 		end
-		if hasTexture then
-			continue
+		if not hasTexture then
+			self:addFaceTexture(part, entry.itemType, faceName)
 		end
-		local faceTable = self.faceTextures[entry.itemType] or {}
-		local textureId = faceTable[faceName]
-		if textureId == nil then
-			for _, anyTexture in faceTable do
-				textureId = anyTexture
-				break
-			end
-		end
-		if textureId == nil then
-			continue
-		end
-		local texture = Instance.new("Texture")
-		texture.Face = NORMAL_IDS[faceName]
-		texture.Texture = textureId
-		texture.StudsPerTileU = BLOCK_SIZE
-		texture.StudsPerTileV = BLOCK_SIZE
-		texture.Parent = part
 	end
 end
 
