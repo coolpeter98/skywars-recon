@@ -1,0 +1,4 @@
+23:53:43 uds<= b'{"method": "tools/call", "params": {"name": "start_stop_play", "arguments": {"is_start": false, "studio_id": "7c6dd917-c4a5-4a8c-a037-20b1442b03df"}}}'
+23:53:44 server<= {"jsonrpc": "2.0", "id": 67, "result": {"content": [{"type": "text", "text": "Game Stopped"}], "isError": false}}
+23:53:56 uds<= b'{"method": "tools/call", "params": {"name": "execute_luau", "arguments": {"code": "\\nlocal out = {}\\nout[1] = \\"TestInventory=\\" .. tostring(game.ServerScriptService:FindFirstChild(\\"TestInventory\\") ~= nil)\\nout[2] = \\"DebugState=\\" .. tostring(game.ServerScriptService:FindFirstChild(\\"DebugState\\"'
+23:53:56 server<= {"jsonrpc": "2.0", "id": 68, "result": {"content": [{"type": "text", "text": "TestInventory=false\nDebugState=false\nServerHook=false\nObserver=false\nOutboundFix=true"}], "isError": false}}

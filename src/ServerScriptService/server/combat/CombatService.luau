@@ -68,12 +68,18 @@ local DAMAGE_TYPE_BOW = "Bow"
 local MAX_MELEE_RANGE = MeleeConstants.MAXIMUM_HIT_RANGE_BLOCKS * 3 + 1.5
 -- The client's PlayerVelocityController scales the DamageImpulse vector by
 -- (AssemblyMass / 14.332) before applying it, so the resulting velocity
--- change is `strength / 14.332` studs/s regardless of mass. These factors
--- turn raw hit damage into that strength: a BronzeSword hit (18) shoves at
--- ~3.8 studs/s, an OnyxSword (32) at ~6.7, an Arrow (18) at ~5.
-local MELEE_KNOCKBACK_PER_DAMAGE = 3
-local PROJECTILE_KNOCKBACK_PER_DAMAGE = 4
-local KNOCKBACK_UPWARD_BIAS = 0.4
+-- change is `strength / 14.332` studs/s regardless of mass. Knockback is
+-- FIXED per damage type instead of scaled by hit damage: the recovered
+-- client never ties knockback magnitude to damage (DamageImpulse is a bare
+-- Vector3, sword definitions carry only Damage, and no client code derives
+-- knockback from damage), so every hit shoves the same. Values tuned by feel
+-- with the KnockbackTest harness (kb.shove(80) / kb.bow(80)): melee
+-- strength 80 * 8 = 640 (~44.7 studs/s), projectiles 80 * 10 = 800
+-- (~55.8 studs/s), upward bias 0.6.
+local KNOCKBACK_BASE = 80
+local MELEE_KNOCKBACK_MULTIPLIER = 8
+local PROJECTILE_KNOCKBACK_MULTIPLIER = 10
+local KNOCKBACK_UPWARD_BIAS = 0.6
 local ARMOUR_TYPES = { "Helmet", "Chestplate", "Leggings" }
 
 -- The melee raycast whitelist looks up these exact part names on characters.
@@ -86,12 +92,12 @@ type HitboxConfig = {
 local CHARACTER_HITBOXES: { HitboxConfig } = {
 	{
 		Name = "Hitbox",
-		Size = Vector3.new(5, 6, 4),
+		Size = Vector3.new(5, 6, 5),
 		Offset = CFrame.new(0, 0.5, 0),
 	},
 	{
 		Name = "ProjectileHitbox",
-		Size = Vector3.new(4, 6, 4),
+		Size = Vector3.new(10, 6, 10),
 		Offset = CFrame.new(0, 0.5, 0),
 	},
 }
@@ -403,6 +409,25 @@ function CombatService:dealDamage(
 		return
 	end
 
+	-- Fixed per damage type; independent of the hit's damage so zero-damage
+	-- weapons (e.g. Snowball) still deliver full knockback.
+	local knockbackStrength = if damageType == DAMAGE_TYPE_BOW
+		then KNOCKBACK_BASE * PROJECTILE_KNOCKBACK_MULTIPLIER
+		else KNOCKBACK_BASE * MELEE_KNOCKBACK_MULTIPLIER
+
+	-- Zero-damage hits skip health, shield, and elimination entirely and
+	-- only deliver the knockback impulse.
+	if damage <= 0 then
+		if knockbackDirection ~= nil then
+			self.context.outbound:fire(
+				"DamageImpulse",
+				target,
+				self:getKnockback(knockbackDirection, knockbackStrength)
+			)
+		end
+		return
+	end
+
 	local rawDamage = math.max(1, math.floor(damage + 0.5))
 	local damageToHealth = math.max(1, math.floor(rawDamage * (1 - self:getArmourMitigation(target)) + 0.5))
 
@@ -436,10 +461,7 @@ function CombatService:dealDamage(
 		)
 	end
 	if knockbackDirection ~= nil then
-		local knockbackFactor = if damageType == DAMAGE_TYPE_BOW
-			then PROJECTILE_KNOCKBACK_PER_DAMAGE
-			else MELEE_KNOCKBACK_PER_DAMAGE
-		local knockback = self:getKnockback(knockbackDirection, rawDamage * knockbackFactor)
+		local knockback = self:getKnockback(knockbackDirection, knockbackStrength)
 		self.context.outbound:fire("DamageImpulse", target, knockback)
 	end
 
