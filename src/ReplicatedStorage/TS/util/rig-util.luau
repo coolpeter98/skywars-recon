@@ -26,6 +26,7 @@ equipAccessory = function(character: Model, accessory: Model, skinId: string, is
 		accessoryModel.PrimaryPart = cloned
 		local attachment = cloned:FindFirstChildOfClass("Attachment")
 		local targetAttachment = nil
+		local fallbackAttachment = nil
 		for _, descendant in character:GetDescendants() do
 			if descendant:IsA("Attachment") then
 				local parentName = descendant.Parent.Name
@@ -33,12 +34,26 @@ equipAccessory = function(character: Model, accessory: Model, skinId: string, is
 				if (not isLegacy or parentName ~= "LowerTorso" and parentName ~= "HumanoidRootPart" and (attachmentName ~= "LeftShoulderRigAttachment" and attachmentName ~= "RightShoulderRigAttachment" or parentName ~= "UpperTorso") and ((attachmentName ~= "LeftKneeRigAttachment" and attachmentName ~= "RightKneeRigAttachment" or parentName ~= "LeftUpperLeg" and parentName ~= "RightUpperLeg") and ((attachmentName ~= "NeckRigAttachment" or parentName ~= "UpperTorso") and ((attachmentName ~= "LeftWristRigAttachment" or parentName ~= "LeftLowerArm") and ((attachmentName ~= "RightWristRigAttachment" or parentName ~= "RightLowerArm") and (not skinId or skinId ~= CosmeticId.ChestplateSpartan and skinId ~= CosmeticId.ChestplateAzazel or (attachmentName ~= "LeftElbowRigAttachment" or parentName ~= "LeftUpperArm") and (attachmentName ~= "RightElbowRigAttachment" or parentName ~= "RightUpperArm"))))))) and descendant.Name == attachment.Name then
 					local shouldSetTarget = isLegacy
 					if not isLegacy then
+						-- The target part must be driven by the joint named after this
+						-- attachment (NeckRigAttachment -> "Neck", etc.). Scan every
+						-- Motor6D on the part by name: FindFirstChildOfClass only ever
+						-- returned the first joint, so on the standard R15 rig (whose
+						-- UpperTorso holds Neck/LeftShoulder/RightShoulder and whose
+						-- LowerTorso holds Waist/LeftHip/RightHip) only the first of each
+						-- set could match and the rest of the armour failed to attach.
 						local unriggedName = string.gsub(attachment.Name, "RigAttachment", "")
-						local motor = descendant.Parent:FindFirstChildOfClass("Motor6D")
-						if motor ~= nil then
-							motor = motor.Name
+						for _, motor in descendant.Parent:GetChildren() do
+							if motor:IsA("Motor6D") and motor.Name == unriggedName then
+								shouldSetTarget = true
+								break
+							end
 						end
-						shouldSetTarget = motor == unriggedName
+						if not shouldSetTarget and fallbackAttachment == nil then
+							-- Same-named attachment on a part without the matching joint:
+							-- remember it in case no motor-driven match exists, so the
+							-- piece still renders on nonstandard rigs.
+							fallbackAttachment = descendant
+						end
 					end
 					if shouldSetTarget then
 						if targetAttachment ~= nil then
@@ -48,6 +63,9 @@ equipAccessory = function(character: Model, accessory: Model, skinId: string, is
 					end
 				end
 			end
+		end
+		if targetAttachment == nil then
+			targetAttachment = fallbackAttachment
 		end
 		if not targetAttachment then
 			print("Failed to find target attachment: " .. attachment.Name)
