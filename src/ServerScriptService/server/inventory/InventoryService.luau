@@ -767,11 +767,12 @@ function InventoryService.sendChest(self, player: Player, chest: Model, shouldOp
 	self.context.outbound:fire("ChestUpdated", player, chest, serializeContents(state.Contents), shouldOpen)
 end
 
--- Plays the chest model's existing open animation once, then freezes the
--- track on its final frame so the chest stays open in 3D forever (there is
--- deliberately no closing animation). The recovered chest models ship with
--- the AnimationController/Animator rig for exactly this server-driven
--- playback; the client only checks that the rig exists.
+-- Plays the chest model's existing open animation once, then loops the
+-- recovered CHEST_IDLE animation forever so the chest stays fully open in 3D
+-- (the recovered set is OPEN -> IDLE -> CLOSE; there is deliberately no
+-- closing here). The chest models ship with the AnimationController/Animator
+-- rig for exactly this server-driven playback; the client only checks that
+-- the rig exists.
 local function playChestOpen(chest: Model)
 	local animationController = chest:FindFirstChild("AnimationController")
 	if animationController == nil or not animationController:IsA("AnimationController") then
@@ -781,28 +782,39 @@ local function playChestOpen(chest: Model)
 	if animator == nil then
 		return
 	end
-	local animation = Instance.new("Animation")
-	animation.AnimationId = RobloxAnimation.CHEST_OPEN
-	local track = animator:LoadAnimation(animation)
-	track:Play()
-	-- The server streams animation content asynchronously: Length reports 0
-	-- until the asset loads and the queued play starts, so wait for the real
-	-- length and then freeze just before the final frame (a stopped track
-	-- would snap the lid back closed).
+
+	local function loadTrack(animationId: string): AnimationTrack
+		local animation = Instance.new("Animation")
+		animation.AnimationId = animationId
+		return animator:LoadAnimation(animation)
+	end
+
+	local openTrack = loadTrack(RobloxAnimation.CHEST_OPEN)
+	local idleTrack = loadTrack(RobloxAnimation.CHEST_IDLE)
+	openTrack:Play()
+
 	task.spawn(function()
+		-- The server streams animation content asynchronously: Length reports
+		-- 0 until the asset loads and the queued play starts, so wait for the
+		-- real length and then freeze just before the final frame (a stopped
+		-- track would snap the lid back closed).
 		local waited = 0
-		while track.Length <= 0 and waited < 5 do
+		while openTrack.Length <= 0 and waited < 5 do
 			waited += task.wait(0.1)
 		end
-		if track.Length <= 0 then
+		if openTrack.Length <= 0 then
 			return
 		end
-		while track.IsPlaying and track.TimePosition < track.Length - 0.05 do
+		while openTrack.IsPlaying and openTrack.TimePosition < openTrack.Length - 0.05 do
 			task.wait(0.03)
 		end
-		if track.IsPlaying then
-			track:AdjustSpeed(0)
+		if openTrack.IsPlaying then
+			openTrack:AdjustSpeed(0)
 		end
+		-- CHEST_OPEN only swings the lid partway; CHEST_IDLE is the fully-open
+		-- state, looped forever so the chest never closes.
+		idleTrack.Looped = true
+		idleTrack:Play(0.2, 1, 1)
 	end)
 end
 
