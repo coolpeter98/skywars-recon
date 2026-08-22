@@ -1,0 +1,6 @@
+node_modules
+package-lock.json
+.vscode
+output_files
+input_files
+dist

@@ -9,7 +9,7 @@ local CustomGameConfig = require(script.Parent.CustomGameConfig)
 local CustomGameStore = require(script.Parent.CustomGameStore)
 local LocalCustomGameStore = require(script.Parent.LocalCustomGameStore)
 local ModeRegistry = require(script.Parent.modes.ModeRegistry)
-local PlaceholderMapService = require(script.Parent.PlaceholderMapService)
+local MapService = require(script.Parent.MapService)
 
 type CustomGameRecord = CustomGameStore.CustomGameRecord
 
@@ -55,9 +55,9 @@ function CustomGameService.new(context)
 	return setmetatable({
 		context = context,
 		store = store,
-		mapService = PlaceholderMapService.new(),
+		mapService = MapService.new(),
 		record = nil :: CustomGameRecord?,
-		loadedMap = nil :: PlaceholderMapService.LoadedMap?,
+		loadedMap = nil :: MapService.LoadedMap?,
 		connections = {} :: { RBXScriptConnection },
 		characterConnections = {} :: { [Player]: RBXScriptConnection },
 		humanoidConnections = {} :: { [Player]: RBXScriptConnection },
@@ -168,7 +168,7 @@ function CustomGameService.buildGameTeams(self, record: CustomGameRecord, adapte
 	return gameTeams
 end
 
-local function isInBuildConstraint(position: Vector3, constraint: PlaceholderMapService.BuildConstraint): boolean
+local function isInBuildConstraint(position: Vector3, constraint: MapService.BuildConstraint): boolean
 	local minimum = constraint.Minimum
 	local maximum = constraint.Maximum
 	return position.X >= minimum.X
@@ -179,7 +179,7 @@ local function isInBuildConstraint(position: Vector3, constraint: PlaceholderMap
 		and position.Z <= maximum.Z
 end
 
-function CustomGameService.getBuildConstraints(self): { PlaceholderMapService.BuildConstraint }
+function CustomGameService.getBuildConstraints(self): { MapService.BuildConstraint }
 	local record = self.record
 	local loadedMap = self.loadedMap
 	if

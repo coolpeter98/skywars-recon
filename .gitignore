@@ -1,0 +1,4 @@
+
+# Vendored rbxm parser build artifacts
+tools/rbxm-parser-ts/node_modules/
+tools/rbxm-parser-ts/dist/
