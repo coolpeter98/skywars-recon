@@ -738,6 +738,25 @@ function CustomGameService.getAliveTeams(self): ({ [string]: { Player } }, numbe
 	return teams, countDictionary(teams)
 end
 
+-- Round context for out-of-service consumers (the kill log): the current
+-- round number plus the game mode and the map actually in play ("Placeholder"
+-- when no real map model is loaded).
+function CustomGameService.getRoundInfo(self): { RoundId: number?, GameMode: string?, MapName: string? }
+	local record = self.record
+	if record == nil then
+		return {}
+	end
+	local mapName = record.Settings.MapName
+	if (mapName == "" or mapName == nil) and self.loadedMap ~= nil then
+		mapName = self.loadedMap.Model.Name
+	end
+	return {
+		RoundId = self.roundId,
+		GameMode = record.Settings.GameMode,
+		MapName = mapName,
+	}
+end
+
 function CustomGameService.eliminatePlayer(self, player: Player, damageType: string, killer: Player?)
 	local record = self.record
 	if record == nil or not record.InGame or player:GetAttribute("Alive") ~= true then
@@ -748,6 +767,18 @@ function CustomGameService.eliminatePlayer(self, player: Player, damageType: str
 	self.context.inventoryService:clear(player)
 	table.insert(self.eliminatedPlayers, 1, player)
 	local killCredit = if killer ~= nil and killer.Parent == Players then killer else nil
+	-- Environmental eliminations (Fall/Void) arrive with no direct killer;
+	-- credit the last attacker instead so a hit that knocks someone into the
+	-- void logs — and feeds the kill feed with — the real killer. The tag is
+	-- consumed either way: an eliminated player's tag is stale.
+	local creditedWeapon: string? = nil
+	local combatService = self.context.combatService
+	if killCredit == nil and combatService ~= nil and combatService.getLastAttacker ~= nil then
+		killCredit, creditedWeapon = combatService:getLastAttacker(player)
+	end
+	if combatService ~= nil and combatService.clearLastAttacker ~= nil then
+		combatService:clearLastAttacker(player)
+	end
 	local position: Vector3? = nil
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	if root and root:IsA("BasePart") then
@@ -759,6 +790,41 @@ function CustomGameService.eliminatePlayer(self, player: Player, damageType: str
 	end
 	self.context.outbound:fire("Spectate", player, nil, position, nil)
 	self:replicateAll()
+
+	-- Kill log: one structured line per elimination, printed to the server
+	-- console and kept in the logger's bounded in-memory history.
+	local killLog = self.context.killLog
+	if killLog ~= nil then
+		local killerWeapon: string? = creditedWeapon
+		if killerWeapon == nil and killCredit ~= nil and killCredit.Character ~= nil then
+			local tool = killCredit.Character:FindFirstChildOfClass("Tool")
+			if tool ~= nil then
+				killerWeapon = tool.Name
+			end
+		end
+		local survivors = 0
+		for _, candidate in Players:GetPlayers() do
+			if candidate:GetAttribute("Alive") == true then
+				survivors += 1
+			end
+		end
+		local roundInfo = self:getRoundInfo()
+		killLog:record({
+			Kind = "Player",
+			Victim = player.Name,
+			VictimUserId = player.UserId,
+			Killer = if killCredit ~= nil then killCredit.Name else nil,
+			KillerUserId = if killCredit ~= nil then killCredit.UserId else nil,
+			DamageType = damageType,
+			Weapon = killerWeapon,
+			Position = position,
+			RoundId = roundInfo.RoundId,
+			GameMode = roundInfo.GameMode,
+			MapName = roundInfo.MapName,
+			Survivors = survivors,
+		})
+	end
+
 	local aliveTeams, aliveTeamCount = self:getAliveTeams()
 	if aliveTeamCount <= 1 then
 		local winners = {}
@@ -807,6 +873,10 @@ function CustomGameService.resetMatch(self)
 	self.roundState = "Pregame"
 	self.mapService:unload()
 	self.context.blockWorldService:clear()
+	local combatService = self.context.combatService
+	if combatService ~= nil and combatService.clearLastAttackers ~= nil then
+		combatService:clearLastAttackers()
+	end
 	self.loadedMap = nil
 	self:updateLocalRecord(function(record)
 		record.InGame = false

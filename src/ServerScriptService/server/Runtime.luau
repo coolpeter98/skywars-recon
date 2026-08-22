@@ -13,6 +13,7 @@ local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextSe
 local PartyService = require(script.Parent.party.PartyService)
 local CustomGameService = require(script.Parent.custom.CustomGameService)
 local BlockWorldService = require(script.Parent.world.BlockWorldService)
+local KillLog = require(script.Parent.logging.KillLog)
 
 local SessionHandlers = require(script.Parent.handlers.SessionHandlers)
 local MatchmakingHandlers = require(script.Parent.handlers.MatchmakingHandlers)
@@ -42,6 +43,7 @@ function Runtime.new()
 		outbound = outbound,
 		playerSessions = playerSessions,
 		runtimeContext = runtimeContext,
+		killLog = KillLog.new(),
 	}
 	local partyService = PartyService.new(context)
 	context.partyService = partyService
@@ -77,6 +79,7 @@ function Runtime.new()
 		projectileService = projectileService,
 		blockWorldService = blockWorldService,
 		matchmakingService = matchmakingService,
+		killLog = context.killLog,
 		eventRouter = EventRouter.new(remoteRegistry, playerSessions, eventRoutes),
 		functionRouter = FunctionRouter.new(remoteRegistry, playerSessions, functionRoutes),
 		started = false,

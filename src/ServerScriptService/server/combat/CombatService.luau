@@ -82,6 +82,10 @@ local PROJECTILE_KNOCKBACK_MULTIPLIER = 10
 local KNOCKBACK_UPWARD_BIAS = 0.6
 local ARMOUR_TYPES = { "Helmet", "Chestplate", "Leggings" }
 
+-- How long after a validated hit an environmental elimination (Void/Fall)
+-- still credits that attacker as the killer (combat tagging).
+local LAST_ATTACK_CREDIT_SECONDS = 10
+
 -- The melee raycast whitelist looks up these exact part names on characters.
 type HitboxConfig = {
 	Name: string,
@@ -110,6 +114,7 @@ type CombatContext = {
 	outbound: any,
 	playerSessions: any,
 	customGameService: any,
+	killLog: any,
 }
 
 local CombatService = {}
@@ -152,6 +157,7 @@ function CombatService.new(context: CombatContext)
 	return setmetatable({
 		context = context,
 		cooldowns = setmetatable({}, { __mode = "k" }) :: { [Player]: { [string]: number } },
+		lastAttackers = {} :: { [Player]: { Attacker: Player, Weapon: string?, Time: number } },
 		playerAddedConnection = nil :: RBXScriptConnection?,
 		characterConnections = {} :: { [Player]: RBXScriptConnection },
 		started = false,
@@ -423,6 +429,21 @@ function CombatService:dealDamage(
 		return
 	end
 
+	-- Combat tagging: every validated hit marks the attacker (including
+	-- zero-damage knockback like Snowball) so Fall/Void eliminations can
+	-- credit the last hitter. CustomGameService.eliminatePlayer consumes
+	-- the tag when no direct killer exists.
+	if attacker ~= nil then
+		local weapon: string? = nil
+		if attacker.Character ~= nil then
+			local tool = attacker.Character:FindFirstChildOfClass("Tool")
+			if tool ~= nil then
+				weapon = tool.Name
+			end
+		end
+		self.lastAttackers[target] = { Attacker = attacker, Weapon = weapon, Time = os.clock() }
+	end
+
 	-- Fixed per damage type; independent of the hit's damage so zero-damage
 	-- weapons (e.g. Snowball) still deliver full knockback.
 	local knockbackStrength = if damageType == DAMAGE_TYPE_BOW
@@ -489,6 +510,37 @@ function CombatService:dealDamage(
 	end
 end
 
+-- The last player to land a validated hit on `target` inside the credit
+-- window, plus the item they were holding at hit time. Environmental
+-- eliminations (Void/Fall) consume this for killer credit. Returns
+-- (attacker, weapon) or nil; stale/left-game tags are dropped here.
+function CombatService:getLastAttacker(target: Player): (Player?, string?)
+	local tag = self.lastAttackers[target]
+	if tag == nil then
+		return nil
+	end
+	if tag.Time + LAST_ATTACK_CREDIT_SECONDS < os.clock() then
+		self.lastAttackers[target] = nil
+		return nil
+	end
+	local attacker = tag.Attacker
+	if attacker == nil or attacker == target or attacker.Parent ~= Players then
+		self.lastAttackers[target] = nil
+		return nil
+	end
+	return attacker, tag.Weapon
+end
+
+function CombatService:clearLastAttacker(target: Player)
+	self.lastAttackers[target] = nil
+end
+
+-- Round boundaries invalidate every combat tag: a hit from a previous round
+-- must never credit an elimination in the next one.
+function CombatService:clearLastAttackers()
+	table.clear(self.lastAttackers)
+end
+
 function CombatService:meleeStrike(player: Player, target: Player?)
 	if target == nil then
 		return
@@ -541,6 +593,38 @@ function CombatService:meleeStrikeEntity(player: Player, entity: Model)
 	if newHealth <= 0 then
 		local entityName = entity.Name
 		self.context.outbound:fireAll("EggEliminated", entityName, player)
+		local killLog = self.context.killLog
+		if killLog ~= nil then
+			local weapon: string? = nil
+			if player.Character ~= nil then
+				local tool = player.Character:FindFirstChildOfClass("Tool")
+				if tool ~= nil then
+					weapon = tool.Name
+				end
+			end
+			local roundId: number? = nil
+			local gameMode: string? = nil
+			local mapName: string? = nil
+			local customGameService = self.context.customGameService
+			if customGameService ~= nil and customGameService.getRoundInfo ~= nil then
+				local roundInfo = customGameService:getRoundInfo()
+				roundId = roundInfo.RoundId
+				gameMode = roundInfo.GameMode
+				mapName = roundInfo.MapName
+			end
+			killLog:record({
+				Kind = "Entity",
+				Victim = entityName,
+				Killer = player.Name,
+				KillerUserId = player.UserId,
+				DamageType = DAMAGE_TYPE_MELEE,
+				Weapon = weapon,
+				Position = if primaryPart ~= nil then primaryPart.Position else nil,
+				RoundId = roundId,
+				GameMode = gameMode,
+				MapName = mapName,
+			})
+		end
 		entity:Destroy()
 	end
 end
@@ -593,6 +677,7 @@ function CombatService.stop(self)
 	end
 	table.clear(self.characterConnections)
 	self:clearCooldowns()
+	self:clearLastAttackers()
 end
 
 return CombatService

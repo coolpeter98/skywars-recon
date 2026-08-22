@@ -1,0 +1,4 @@
+# All scripts in this repo are Luau (types, if-expressions, etc.), so force
+# the Luau parser instead of stylua's default syntax detection (which can
+# fall back to Lua 5.3 and fail on Luau-only syntax).
+syntax = "Luau"
