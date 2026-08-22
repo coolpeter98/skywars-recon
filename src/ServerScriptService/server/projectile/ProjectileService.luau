@@ -1,25 +1,27 @@
 --!strict
 
--- Server-authoritative Arrow projectile simulation.
+-- Server-authoritative projectile simulation for every ranged weapon.
 --
--- The client charges a bow locally and, on release, fires
+-- The client charges a ranged weapon locally and, on release, fires
 -- `FireProjectile(direction, strength)`. This service validates the shooter
--- (alive, holding a Bow, off cooldown, holding Arrow ammo, finite non-zero
--- direction, strength in [0, 1]), consumes one Arrow authoritatively, then
--- replicates the shot with `ProjectileFired` and simulates the arrow's flight
--- using the same speed and acceleration the client's FastCast uses.
+-- (alive, holding a ranged item, off that weapon's cooldown, holding ammo when
+-- the weapon requires it, finite non-zero direction, strength in [0, 1]),
+-- consumes ammo authoritatively, then replicates the shot with
+-- `ProjectileFired` and simulates the flight using the same speed and
+-- acceleration the client's FastCast uses.
 --
--- Collisions end the flight via `ProjectileTerminated`: an environment hit
--- lets the client finish its own visual simulation (the arrow welds), while a
--- player hit or a lifetime expiry cleans the visual up immediately. Player
--- hits are routed into CombatService, which applies the arrow's damage,
--- knockback (the same knockback system melee uses), and elimination/kill-feed
--- events. Bow cooldowns also live in CombatService's shared registry.
+-- Collisions end the flight via `ProjectileTerminated`. An environment hit on
+-- a weldable projectile (Arrow) lets the client finish its own visual
+-- simulation so the arrow welds; player hits and everything else clean the
+-- visual up immediately. Per-projectile behavior (damage, knockback,
+-- explosions, teleports, pulls) lives in the HIT_BEHAVIORS registry keyed by
+-- the projectile item type, so a new projectile type is one registry entry.
 --
--- The client may locally predict its own arrow (same speed and acceleration)
+-- The client may locally predict its own Arrow (same speed and acceleration)
 -- and pass an identifier suffix with `FireProjectile`; this service echoes it
 -- back as `<UserId>:<suffix>` so the prediction is reconciled instead of
--- rendered twice.
+-- rendered twice. Every other projectile type is only rendered from the
+-- server broadcast (the client predicts nothing for them).
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -32,23 +34,68 @@ local Items = require(ReplicatedStorage.TS.item.item).Items
 local ProjectileConstants = require(ReplicatedStorage.TS.projectile["projectile-constants"]).ProjectileConstants
 local WorldConstants = require(ReplicatedStorage.TS.world["world-constants"]).WorldConstants
 
-local BOW_ITEM_TYPE = "Bow"
-local ARROW_ITEM_TYPE = "Arrow"
 local DEFAULT_PROJECTILE_SPEED = 200
 local MAX_PROJECTILE_LIFETIME = 10
 local MAX_SEGMENT_LENGTH = 2
 local MAX_STEP_DELTA = 0.25
 local MAX_PREDICTION_ID_LENGTH = 64
 
-type Projectile = {
+-- The subset of the shared item module's projectile definition this service
+-- reads. The full definitions carry cosmetic fields (particles, sounds,
+-- viewport options) that are irrelevant to the server simulation.
+export type ProjectileData = {
+	Damage: number?,
+	WeldOnCollide: boolean?,
+	CollidePlayers: boolean?,
+	Velocity: number?,
+	Acceleration: Vector3?,
+	ExplosionRadius: number?,
+	KnockbackRadius: number?,
+	KnockbackScalar: Vector3?,
+	ImpactSound: string?,
+	ExplosionSound: string?,
+	ExplosionParticles: { [string]: any }?,
+}
+
+export type RangedDefinition = {
+	ProjectileType: string,
+	RequiresAmmo: boolean?,
+	Cooldown: number?,
+	DrawTime: number?,
+	MinimumDrawTime: number?,
+}
+
+export type Projectile = {
 	identifier: string,
 	shooter: Player,
-	itemName: string,
+	-- The held weapon this was fired from (also the client's cooldown key).
+	weaponName: string,
+	-- The item whose Projectile definition drives the simulation and visuals.
+	projectileType: string,
+	data: ProjectileData,
 	position: Vector3,
 	velocity: Vector3,
 	acceleration: Vector3,
 	elapsed: number,
 	raycastParams: RaycastParams,
+}
+
+-- What hit behaviors are handed: the service state they may read, never its
+-- public API. Keeps behaviors trivially testable and independent of method
+-- layout.
+export type ProjectileServiceState = {
+	context: any,
+	activeProjectiles: { [string]: Projectile },
+	started: boolean,
+	heartbeatConnection: RBXScriptConnection?,
+}
+
+-- A hit behavior decides what a collision does and whether the client should
+-- finish its own visual simulation (`true` = let the client weld, used by
+-- projectiles whose WeldOnCollide is enabled).
+export type HitBehavior = {
+	onPlayerHit: ((self: ProjectileServiceState, projectile: Projectile, target: Player) -> boolean)?,
+	onEnvironmentHit: ((self: ProjectileServiceState, projectile: Projectile, position: Vector3) -> boolean)?,
 }
 
 type Termination = {
@@ -58,6 +105,8 @@ type Termination = {
 
 local ProjectileService = {}
 ProjectileService.__index = ProjectileService
+
+local HIT_BEHAVIORS: { [string]: HitBehavior } = {}
 
 local function isFinite(value: number): boolean
 	return value == value and value ~= math.huge and value ~= -math.huge
@@ -85,7 +134,7 @@ local function getPlayerFromHit(hitInstance: Instance): Player?
 end
 
 -- Casts a ray from `from` to `to`, subdividing the span into short segments so
--- a fast arrow cannot tunnel through a thin block or player hitbox.
+-- a fast projectile cannot tunnel through a thin block or player hitbox.
 local function castSegment(from: Vector3, to: Vector3, params: RaycastParams): RaycastResult?
 	local delta = to - from
 	local distance = delta.Magnitude
@@ -107,7 +156,54 @@ local function castSegment(from: Vector3, to: Vector3, params: RaycastParams): R
 	return nil
 end
 
-function ProjectileService.new(context)
+-- Applies a projectile's damage to a hit player. Damage 0 (Snowball) still
+-- delivers the fixed projectile knockback through CombatService's zero-damage
+-- path; the impulse direction is the projectile's travel velocity.
+local function dealPlayerHit(self: ProjectileServiceState, projectile: Projectile, target: Player)
+	local combatService = self.context.combatService
+	if combatService == nil then
+		return
+	end
+	local damage = projectile.data.Damage
+	if not isFinite(damage) then
+		return
+	end
+	combatService:dealProjectileHit(projectile.shooter, target, damage, projectile.velocity)
+end
+
+-- Behavior for projectile types without an explicit registry entry: deal the
+-- projectile's damage to hit players, and mirror the client's weld default
+-- (WeldOnCollide == nil treats the projectile as weldable). Arrow relies on
+-- this default on purpose.
+local DEFAULT_HIT_BEHAVIOR: HitBehavior = {
+	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
+		dealPlayerHit(self, projectile, target)
+		return false
+	end,
+	onEnvironmentHit = function(_: ProjectileServiceState, projectile: Projectile, _: Vector3)
+		local weld = projectile.data.WeldOnCollide
+		return if weld == nil then true else weld
+	end,
+}
+
+-- Routes a collision through the projectile type's behavior and returns
+-- whether the client should finish its own visual simulation.
+local function applyHit(self: ProjectileServiceState, projectile: Projectile, hit: RaycastResult): boolean
+	local hitPlayer = getPlayerFromHit(hit.Instance)
+	local behavior = HIT_BEHAVIORS[projectile.projectileType] or DEFAULT_HIT_BEHAVIOR
+	if hitPlayer ~= nil then
+		if behavior.onPlayerHit ~= nil then
+			return behavior.onPlayerHit(self, projectile, hitPlayer)
+		end
+		return false
+	end
+	if behavior.onEnvironmentHit ~= nil then
+		return behavior.onEnvironmentHit(self, projectile, hit.Position)
+	end
+	return false
+end
+
+function ProjectileService.new(context): typeof(ProjectileService)
 	return setmetatable({
 		context = context,
 		activeProjectiles = {} :: { [string]: Projectile },
@@ -117,7 +213,8 @@ function ProjectileService.new(context)
 end
 
 -- Cooldowns live in CombatService's shared registry (one system for every
--- combat action). Bow cooldowns replicate to the client for the bow UI.
+-- combat action). Replicated cooldowns reach the client through
+-- CooldownUpdated, keyed by the held weapon's item name.
 function ProjectileService.isOnCooldown(self, player: Player, key: string): boolean
 	return self.context.combatService:isOnCooldown(player, key)
 end
@@ -152,6 +249,8 @@ function ProjectileService.resolveIdentifier(self, player: Player, predictedIden
 	return identifier
 end
 
+-- Resolves the held ranged weapon into its projectile definition, validates
+-- ammo and cooldown, and starts a simulated projectile of that type.
 function ProjectileService.fireProjectile(
 	self,
 	player: Player,
@@ -166,10 +265,25 @@ function ProjectileService.fireProjectile(
 	if not self:isValidShooter(player) then
 		return false
 	end
-	if session.heldItemType ~= BOW_ITEM_TYPE then
+	local heldItemType = session.heldItemType
+	if type(heldItemType) ~= "string" then
 		return false
 	end
-	if self:isOnCooldown(player, BOW_ITEM_TYPE) then
+	local weaponDefinition = Items[heldItemType]
+	if weaponDefinition == nil or weaponDefinition.Ranged == nil then
+		return false
+	end
+	local ranged = weaponDefinition.Ranged :: RangedDefinition
+	local projectileType = ranged.ProjectileType
+	if type(projectileType) ~= "string" then
+		return false
+	end
+	local projectileItem = Items[projectileType]
+	local projectileData = projectileItem and projectileItem.Projectile or nil
+	if projectileData == nil then
+		return false
+	end
+	if self:isOnCooldown(player, heldItemType) then
 		return false
 	end
 	if
@@ -181,24 +295,22 @@ function ProjectileService.fireProjectile(
 	then
 		return false
 	end
-	if not isFinite(strength) or strength < 0 or strength > 1 then
+	if not isFinite(strength) or strength <= 0 or strength > 1 then
 		return false
 	end
 
-	local arrowDefinition = Items[ARROW_ITEM_TYPE]
-	local projectileData = arrowDefinition and arrowDefinition.Projectile or nil
-	if projectileData == nil then
-		return false
-	end
-	if self.context.inventoryService:getItemQuantity(player, ARROW_ITEM_TYPE) < 1 then
+	-- Weapons without RequiresAmmo consume their projectile item type (the
+	-- client's default is RequiresAmmo = true); FishingRod opts out.
+	local requiresAmmo = ranged.RequiresAmmo ~= false
+	local inventoryService = self.context.inventoryService
+	if requiresAmmo and inventoryService:getItemQuantity(player, projectileType) < 1 then
 		return false
 	end
 	local root = getPlayerRoot(player)
 	if root == nil then
 		return false
 	end
-
-	if not self.context.inventoryService:changeItem(player, ARROW_ITEM_TYPE, -1) then
+	if requiresAmmo and not inventoryService:changeItem(player, projectileType, -1) then
 		return false
 	end
 
@@ -221,7 +333,9 @@ function ProjectileService.fireProjectile(
 	self.activeProjectiles[identifier] = {
 		identifier = identifier,
 		shooter = player,
-		itemName = ARROW_ITEM_TYPE,
+		weaponName = heldItemType,
+		projectileType = projectileType,
+		data = projectileData,
 		position = origin,
 		velocity = unitDirection * speed,
 		acceleration = acceleration,
@@ -229,11 +343,14 @@ function ProjectileService.fireProjectile(
 		raycastParams = raycastParams,
 	}
 
-	self:setCooldown(player, BOW_ITEM_TYPE, ProjectileConstants.COOLDOWN)
+	-- Weapons without an explicit Cooldown (Bow, Capybara, Dynamite) use the
+	-- shared micro-cooldown; the client charges them over DrawTime anyway.
+	local cooldown = if ranged.Cooldown ~= nil then ranged.Cooldown else ProjectileConstants.COOLDOWN
+	self:setCooldown(player, heldItemType, cooldown)
 	self.context.outbound:fireAll(
 		"ProjectileFired",
 		player,
-		ARROW_ITEM_TYPE,
+		projectileType,
 		origin,
 		unitDirection,
 		speed,
@@ -242,24 +359,6 @@ function ProjectileService.fireProjectile(
 		nil
 	)
 	return true
-end
-
--- Applies arrow damage when a simulated projectile collides with a player.
--- Damage comes from the projectile item's definition (e.g. Arrow.Projectile.
--- Damage); knockback is built by CombatService's universal knockback system
--- from the arrow's travel velocity.
-function ProjectileService.dealPlayerHit(self, projectile: Projectile, target: Player)
-	local combatService = self.context.combatService
-	if combatService == nil then
-		return
-	end
-	local itemDefinition = Items[projectile.itemName]
-	local projectileData = itemDefinition and itemDefinition.Projectile or nil
-	local damage = projectileData and projectileData.Damage or nil
-	if not isFinite(damage) then
-		return
-	end
-	combatService:dealProjectileHit(projectile.shooter, target, damage, projectile.velocity)
 end
 
 function ProjectileService.terminate(self, projectile: Projectile, finishSimulation: boolean)
@@ -287,11 +386,7 @@ function ProjectileService.step(self, rawDeltaTime: number)
 		local hit = castSegment(previousPosition, projectile.position, projectile.raycastParams)
 		if hit ~= nil then
 			projectile.position = hit.Position
-			local hitPlayer = getPlayerFromHit(hit.Instance)
-			if hitPlayer ~= nil then
-				self:dealPlayerHit(projectile, hitPlayer)
-			end
-			table.insert(terminations, { projectile = projectile, finishSimulation = hitPlayer == nil })
+			table.insert(terminations, { projectile = projectile, finishSimulation = applyHit(self, projectile, hit) })
 		end
 	end
 
@@ -331,6 +426,12 @@ function ProjectileService.stop(self)
 		self.heartbeatConnection = nil
 	end
 	self:clearAll()
+end
+
+-- Extension point: registers or replaces the hit behavior for a projectile
+-- item type. Built-in types register through this same table below.
+function ProjectileService.registerHitBehavior(projectileType: string, behavior: HitBehavior)
+	HIT_BEHAVIORS[projectileType] = behavior
 end
 
 return ProjectileService
