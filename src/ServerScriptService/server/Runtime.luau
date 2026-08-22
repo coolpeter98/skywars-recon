@@ -88,6 +88,7 @@ function Runtime.new()
 	return setmetatable({
 		playerSessions = playerSessions,
 		partyService = partyService,
+		lobbyWorldService = lobbyWorldService,
 		customGameService = customGameService,
 		inventoryService = inventoryService,
 		combatService = combatService,
