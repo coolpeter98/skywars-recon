@@ -27,7 +27,12 @@ function CombatHandlers.fireProjectile(
 	self.context.projectileService:fireProjectile(player, direction, strength, predictionId)
 end
 
-function CombatHandlers.activatePowerUp(self, player: Player) end
+function CombatHandlers.activatePowerUp(self, player: Player)
+	local powerUpService = self.context.powerUpService
+	if powerUpService ~= nil then
+		powerUpService:activate(player)
+	end
+end
 
 function CombatHandlers.getRoutes(self)
 	return {

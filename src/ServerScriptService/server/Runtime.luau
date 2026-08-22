@@ -8,6 +8,7 @@ local FunctionRouter = require(script.Parent.FunctionRouter)
 local InventoryService = require(script.Parent.inventory.InventoryService)
 local CombatService = require(script.Parent.combat.CombatService)
 local ProjectileService = require(script.Parent.projectile.ProjectileService)
+local PowerUpService = require(script.Parent.powerup.PowerUpService)
 local MatchmakingService = require(script.Parent.matchmaking.MatchmakingService)
 local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextService)
 local PartyService = require(script.Parent.party.PartyService)
@@ -58,6 +59,8 @@ function Runtime.new()
 	context.combatService = combatService
 	local projectileService = ProjectileService.new(context)
 	context.projectileService = projectileService
+	local powerUpService = PowerUpService.new(context)
+	context.powerUpService = powerUpService
 	local blockWorldService = BlockWorldService.new(context)
 	context.blockWorldService = blockWorldService
 	local nametagService = NametagService.new(context)
@@ -80,6 +83,7 @@ function Runtime.new()
 		inventoryService = inventoryService,
 		combatService = combatService,
 		projectileService = projectileService,
+		powerUpService = powerUpService,
 		blockWorldService = blockWorldService,
 		nametagService = nametagService,
 		matchmakingService = matchmakingService,
@@ -100,6 +104,7 @@ function Runtime.start(self)
 	self.inventoryService:start()
 	self.combatService:start()
 	self.projectileService:start()
+	self.powerUpService:start()
 	self.blockWorldService:start()
 	self.eventRouter:start()
 	self.functionRouter:start()
@@ -116,6 +121,7 @@ function Runtime.stop(self)
 	self.partyService:stop()
 	self.matchmakingService:stop()
 	self.projectileService:stop()
+	self.powerUpService:stop()
 	self.combatService:stop()
 	self.blockWorldService:stop()
 	self.inventoryService:stop()

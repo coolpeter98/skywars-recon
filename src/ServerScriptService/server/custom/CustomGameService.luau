@@ -764,6 +764,10 @@ function CustomGameService.eliminatePlayer(self, player: Player, damageType: str
 	end
 	player:SetAttribute("Alive", false)
 	player:SetAttribute("Spectating", true)
+	local powerUpService = self.context.powerUpService
+	if powerUpService ~= nil then
+		powerUpService:clearPlayer(player)
+	end
 	self.context.inventoryService:clear(player)
 	table.insert(self.eliminatedPlayers, 1, player)
 	local killCredit = if killer ~= nil and killer.Parent == Players then killer else nil
@@ -876,6 +880,10 @@ function CustomGameService.resetMatch(self)
 	local combatService = self.context.combatService
 	if combatService ~= nil and combatService.clearLastAttackers ~= nil then
 		combatService:clearLastAttackers()
+	end
+	local powerUpService = self.context.powerUpService
+	if powerUpService ~= nil then
+		powerUpService:clearAll()
 	end
 	self.loadedMap = nil
 	self:updateLocalRecord(function(record)

@@ -36,8 +36,11 @@
 -- melee item; the strike respects the shared damage cooldown, maximum melee
 -- range (the client's loosest desktop bound plus latency slack), line of
 -- sight, and friendly-fire rules. Damage is reduced by equipped armour
--- (additive DamageMitigation per piece, matching the client) and absorbed by
--- shield before it reaches health.
+-- (additive DamageMitigation per piece, matching the client). Shield health
+-- fully absorbs exactly one hit no matter how much remains (1 shield point
+-- still blocks a whole hit) and is then removed; the Shield power-up ends
+-- when its shield is consumed. While the attacker has LifeSteal active,
+-- every validated damaging hit heals them for ~3 health.
 --
 -- Bow hits are routed through the same damage path by ProjectileService.
 
@@ -82,6 +85,10 @@ local PROJECTILE_KNOCKBACK_MULTIPLIER = 10
 local KNOCKBACK_UPWARD_BIAS = 0.6
 local ARMOUR_TYPES = { "Helmet", "Chestplate", "Leggings" }
 
+-- Health restored to an attacker per validated damaging hit while the
+-- LifeSteal power-up is active.
+local LIFESTEAL_HEAL_PER_HIT = 3
+
 -- How long after a validated hit an environmental elimination (Void/Fall)
 -- still credits that attacker as the killer (combat tagging).
 local LAST_ATTACK_CREDIT_SECONDS = 10
@@ -114,6 +121,7 @@ type CombatContext = {
 	outbound: any,
 	playerSessions: any,
 	customGameService: any,
+	powerUpService: any,
 	killLog: any,
 }
 
@@ -469,16 +477,32 @@ function CombatService:dealDamage(
 	local shield = getShield(target)
 	local absorbedDamage = 0
 	if shield > 0 and damageToHealth > 0 then
-		absorbedDamage = math.min(shield, damageToHealth)
-		shield -= absorbedDamage
-		damageToHealth -= absorbedDamage
-		target:SetAttribute(Attribute.Shield, shield)
+		-- Shield health fully absorbs exactly one hit no matter how much
+		-- remains (the original game's rule: even 1 shield point blocks an
+		-- entire hit), then the shield is removed.
+		absorbedDamage = damageToHealth
+		damageToHealth = 0
+		target:SetAttribute(Attribute.Shield, 0)
 	end
 	local shieldHit = absorbedDamage > 0
 
 	local health = getHealth(target)
 	local newHealth = math.max(HealthConstants.MIN_HEALTH, health - damageToHealth)
 	target:SetAttribute(Attribute.Health, newHealth)
+
+	-- Power-up hooks: a consumed shield ends the Shield power-up (its single
+	-- guaranteed block is spent), and a LifeSteal attacker heals on every
+	-- validated damaging hit.
+	local powerUpService = self.context.powerUpService
+	if shieldHit and powerUpService ~= nil then
+		powerUpService:onShieldConsumed(target)
+	end
+	if attacker ~= nil and powerUpService ~= nil and powerUpService:hasPowerUp(attacker, "LifeSteal") then
+		attacker:SetAttribute(
+			Attribute.Health,
+			math.min(HealthConstants.MAX_HEALTH, getHealth(attacker) + LIFESTEAL_HEAL_PER_HIT)
+		)
+	end
 
 	-- The number the client shows: health damage when any got through,
 	-- otherwise the amount the shield absorbed.
