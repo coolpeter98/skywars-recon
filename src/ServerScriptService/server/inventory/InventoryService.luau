@@ -353,10 +353,24 @@ function InventoryService.refreshCurrency(self, player: Player, shouldReplicate:
 	end
 end
 
-function InventoryService.publishInventory(self, player: Player)
-	local session = self.context.playerSessions:require(player)
-	self.context.outbound:sendInventory(player, session.inventory)
-	self:refreshCurrency(player, true)
+-- Slot rearrangements are client-local and have no client-to-server remote.
+-- After bootstrap, replicate quantity deltas so the recovered client applies
+-- them to its current layout (and refreshes the active item on an upgrade).
+function InventoryService.replicateItemChange(
+	self,
+	player: Player,
+	itemType: string,
+	quantity: number,
+	predictionId: string?
+)
+	if quantity == 0 then
+		return
+	end
+	self.context.outbound:fire("InventoryUpdated", player, itemType, quantity, predictionId)
+	local itemDefinition: ItemDefinition? = Items[itemType]
+	if itemDefinition ~= nil and itemDefinition.Currency ~= nil then
+		self:refreshCurrency(player, true)
+	end
 end
 
 function InventoryService.getItemQuantity(self, player: Player, itemType: string): number
@@ -384,11 +398,7 @@ function InventoryService.changeItem(
 		return false
 	end
 	session.inventory = updatedInventory
-	self.context.outbound:fire("InventoryUpdated", player, itemType, quantity, predictionId)
-	local itemDefinition: ItemDefinition = Items[itemType]
-	if itemDefinition.Currency ~= nil then
-		self:refreshCurrency(player, true)
-	end
+	self:replicateItemChange(player, itemType, quantity, predictionId)
 	if quantity < 0 and session.heldItemType == itemType and self:getItemQuantity(player, itemType) == 0 then
 		self:setHeldItem(player, nil)
 	end
@@ -501,7 +511,12 @@ function InventoryService.equipArmour(self, player: Player, itemType: string): b
 	session.inventory = updatedInventory
 	session.equippedArmour[armourType] = itemType
 	self:applyArmourVisual(player, armourType, itemType)
-	self:publishInventory(player)
+	if previousItemType ~= itemType then
+		self:replicateItemChange(player, itemType, -1)
+		if previousItemType ~= nil then
+			self:replicateItemChange(player, previousItemType, 1)
+		end
+	end
 	return true
 end
 
@@ -524,7 +539,7 @@ function InventoryService.unequipArmour(self, player: Player, itemType: string):
 	session.inventory = updatedInventory
 	session.equippedArmour[armourType] = nil
 	self:applyArmourVisual(player, armourType, nil)
-	self:publishInventory(player)
+	self:replicateItemChange(player, itemType, 1)
 	return true
 end
 
@@ -879,6 +894,7 @@ function InventoryService.transferChestItem(
 	local updatedChestInventory: Inventory?
 	local equippedArmourType: string?
 	local equippedArmourItemType: string?
+	local previousEquippedArmourItemType: string?
 	local heldItemType = session.heldItemType
 	local heldItem = if heldItemType then findItem(session.inventory, heldItemType) else nil
 	local heldItemSlot = if heldItem then heldItem.Slot else nil
@@ -916,10 +932,20 @@ function InventoryService.transferChestItem(
 	session.inventory = updatedPlayerInventory
 	self.chests[chest] = updatedChestInventory
 	if equippedArmourType ~= nil and equippedArmourItemType ~= nil then
+		previousEquippedArmourItemType = session.equippedArmour[equippedArmourType]
 		session.equippedArmour[equippedArmourType] = equippedArmourItemType
 		self:applyArmourVisual(player, equippedArmourType, equippedArmourItemType)
 	end
-	self:publishInventory(player)
+	if quantity > 0 then
+		self:replicateItemChange(player, itemType, -quantity)
+	elseif equippedArmourItemType ~= nil then
+		if previousEquippedArmourItemType ~= nil then
+			self:replicateItemChange(player, previousEquippedArmourItemType, 1)
+		end
+		self:replicateItemChange(player, itemType, -quantity - 1)
+	else
+		self:replicateItemChange(player, itemType, -quantity)
+	end
 	if heldItemType ~= nil and heldItemSlot ~= nil then
 		local itemAtPreviousHeldSlot = updatedPlayerInventory.Contents[heldItemSlot]
 		if itemAtPreviousHeldSlot ~= nil then
@@ -972,7 +998,8 @@ function InventoryService.purchaseItem(self, player: Player, shopType: string, i
 		return false
 	end
 	session.inventory = updatedInventory
-	self:publishInventory(player)
+	self:replicateItemChange(player, currencyItemType, -shopItem.Price)
+	self:replicateItemChange(player, shopItem.ItemType, shopItem.Quantity)
 	return true
 end
 
@@ -1014,6 +1041,8 @@ function InventoryService.purchaseUpgrade(self, player: Player, shopType: string
 	if updatedInventory == nil then
 		return false
 	end
+	local replacedItemType: string?
+	local replacedItemQuantity = 0
 	if upgrade.Id == "Armour" then
 		for _, armourItemType in target.ArmourTypes do
 			local armourDefinition: ItemDefinition? = Items[armourItemType]
@@ -1026,6 +1055,8 @@ function InventoryService.purchaseUpgrade(self, player: Player, shopType: string
 			local currentItemType = upgrade.Items[currentIndex].ItemType
 			local currentItem = findItem(updatedInventory, currentItemType)
 			if currentItem then
+				replacedItemType = currentItemType
+				replacedItemQuantity = currentItem.Quantity
 				updatedInventory = updateInventoryBasic(updatedInventory, currentItemType, -currentItem.Quantity)
 			end
 		end
@@ -1047,7 +1078,13 @@ function InventoryService.purchaseUpgrade(self, player: Player, shopType: string
 			self:applyArmourVisual(player, armourType, armourItemType)
 		end
 	end
-	self:publishInventory(player)
+	self:replicateItemChange(player, currencyItemType, -target.Price)
+	if replacedItemType ~= nil then
+		self:replicateItemChange(player, replacedItemType, -replacedItemQuantity)
+	end
+	if upgrade.Id ~= "Armour" then
+		self:replicateItemChange(player, target.ItemType, target.Quantity)
+	end
 	return true
 end
 

@@ -113,10 +113,8 @@ function SkyWarsMode.getMapAssetFolder(): string
 end
 
 function SkyWarsMode.getStarterInventory(_: string): ({ { Type: string, Quantity: number } }, string?)
-	return {
-		{ Type = "BronzeSword", Quantity = 1 },
-		{ Type = "TeamConcrete", Quantity = 32 },
-	}, "BronzeSword"
+	-- SkyWars players obtain every item from the arena's chests.
+	return {}, nil
 end
 
 function SkyWarsMode.isMapNameValid(mapName: string): boolean
