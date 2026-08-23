@@ -8,8 +8,7 @@
 -- scoreboard shows its "Starting in N..." countdown for exactly this state —
 -- GameStatus counts GameConstants.PREGAME_DURATION down from the
 -- GameStateChangeTime event — so the server fires GameStateChangeTime(0)
--- and waits the same length the client displays (10 s in Studio, 15 s on
--- production SkyWars servers).
+-- and waits the same 10 seconds the client displays.
 --
 -- Phase 2 (the caged countdown): once the scoreboard countdown ends, the
 -- caller teleports everyone to the arena and this service cages every
@@ -36,10 +35,10 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local RobloxSound = require(ReplicatedStorage.TS.asset.roblox["roblox-sound"]).RobloxSound
+local RoundConfig = require(script.Parent.RoundConfig)
 
 -- Cage geometry, byte-for-byte the client's GlassCage.createCage contract.
 local CAGE_MODEL_NAME = "CageGlass"
@@ -84,14 +83,10 @@ local PregameService = {}
 PregameService.__index = PregameService
 
 -- The client counts the scoreboard's "Starting in N..." down from
--- GameStateChangeTime + GameConstants.PREGAME_DURATION (10 in Studio, 15 on
--- production SkyWars servers — PlaceUtil.isProduction() chooses). Phase 1
--- runs exactly that long so the display reaches zero when the cages appear.
+-- GameStateChangeTime + GameConstants.PREGAME_DURATION. Phase 1 runs exactly
+-- that long so the display reaches zero when the cages appear.
 local function getClientPregameDuration(): number
-	if RunService:IsStudio() then
-		return 10
-	end
-	return 15
+	return RoundConfig.PregameDuration
 end
 
 local function buildCage(position: Vector3, parent: Instance): Model

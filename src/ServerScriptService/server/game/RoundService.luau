@@ -25,6 +25,8 @@ export type RoundSession = {
 local RoundService = {}
 RoundService.__index = RoundService
 
+local REPLICATION_RETRY_DELAYS = { 0.5, 1, 2, 4 }
+
 local function countDictionary(dictionary: { [string]: any }): number
 	local count = 0
 	for _ in dictionary do
@@ -58,6 +60,7 @@ function RoundService.new(context)
 		eliminatedPlayers = {} :: { Player },
 		roundId = 0,
 		roundState = "Pregame",
+		gameStateChangeTime = os.time(),
 		roundActive = false,
 		running = false,
 	}, RoundService)
@@ -95,6 +98,7 @@ function RoundService.configure(self, session: RoundSession): boolean
 	end
 	self.session = session
 	self.roundState = "Pregame"
+	self.gameStateChangeTime = os.time()
 	self.roundActive = false
 	self.context.lobbyWorldService:setPregame()
 	self:replicateAll()
@@ -195,6 +199,7 @@ function RoundService.replicatePlayer(self, player: Player)
 	end
 	self.context.outbound:setValue(player, "Players", aliveUserIds)
 	self.context.outbound:setValue(player, "GameState", self.roundState)
+	self.context.outbound:setValue(player, "GameStateChangeTime", self.gameStateChangeTime)
 	player:SetAttribute("TeamId", session.TeamAssignments[tostring(player.UserId)])
 end
 
@@ -336,6 +341,16 @@ function RoundService.initializePlayer(self, player: Player)
 	self:replicatePlayer(player)
 	self.pregameService:syncPlayer(player)
 	self:tryAutoStart(false)
+	local initializedSession = session
+	task.spawn(function()
+		for _, delaySeconds in REPLICATION_RETRY_DELAYS do
+			task.wait(delaySeconds)
+			if not self.running or player.Parent ~= Players or self.session ~= initializedSession then
+				return
+			end
+			self:replicatePlayer(player)
+		end
+	end)
 end
 
 function RoundService.getReadyParticipantCount(self): number
@@ -394,7 +409,17 @@ function RoundService.startRound(self): boolean
 		return false
 	end
 	self.context.blockWorldService:rebuild(self.loadedMap.Model)
+	self.gameStateChangeTime = os.time()
 	self:replicateAll()
+	-- Map loading/rebuild is synchronous. Yield after publishing the ready
+	-- Pregame snapshot so CustomGame.InGame reaches the lifecycle controller
+	-- and GameController mounts before the one-shot countdown event below.
+	-- Public matches benefit from the same client-ready boundary.
+	task.wait()
+	if not self.running or self.roundId ~= roundId or self.session ~= session or self.roundState ~= "Pregame" then
+		self.roundActive = false
+		return false
+	end
 	local lobbyCountdown = self.pregameService:startLobbyCountdown()
 	task.delay(lobbyCountdown, function()
 		if not self.running or self.roundId ~= roundId or self.session ~= session or self.roundState ~= "Pregame" then
@@ -416,6 +441,7 @@ function RoundService.startRound(self): boolean
 			end
 		end
 		self.roundState = "Countdown"
+		self.gameStateChangeTime = os.time()
 		self.context.lobbyWorldService:hideWorld()
 		self:replicateAll()
 		self.pregameService:begin(cagedPlayers, cagedSpawns, RoundConfig.CountdownDuration)
@@ -430,6 +456,7 @@ function RoundService.startRound(self): boolean
 			end
 			self.pregameService:finish()
 			self.roundState = "InGame"
+			self.gameStateChangeTime = os.time()
 			self:replicateAll()
 			for _, participant in Players:GetPlayers() do
 				self.context.outbound:fire("GameStateChangeTime", participant, 0)
@@ -554,6 +581,7 @@ function RoundService.finishRound(self, winners: { Player })
 		return
 	end
 	self.roundState = "Ended"
+	self.gameStateChangeTime = os.time()
 	self.pregameService:clear()
 	self.context.lobbyWorldService:showWorld()
 	local placements = { winners }
@@ -589,6 +617,7 @@ function RoundService.resetRound(self)
 	end
 	self.roundId += 1
 	self.roundState = "Pregame"
+	self.gameStateChangeTime = os.time()
 	self.roundActive = false
 	self.pregameService:clear()
 	self.context.lobbyWorldService:showWorld()
@@ -621,6 +650,7 @@ function RoundService.completePublicRound(self)
 	self.roundActive = true
 	if self.roundState ~= "Ended" then
 		self.roundState = "Ended"
+		self.gameStateChangeTime = os.time()
 		self.context.lobbyWorldService:showWorld()
 		self:replicateAll()
 	end
@@ -672,6 +702,7 @@ function RoundService.clearSession(self)
 	self.loadedMap = nil
 	self.session = nil
 	self.roundState = "Pregame"
+	self.gameStateChangeTime = os.time()
 	self.roundActive = false
 	table.clear(self.initializedPlayers)
 	table.clear(self.eliminatedPlayers)

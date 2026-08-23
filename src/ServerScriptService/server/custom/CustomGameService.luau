@@ -15,6 +15,12 @@ type CustomGameRecord = CustomGameStore.CustomGameRecord
 local CustomGameService = {}
 CustomGameService.__index = CustomGameService
 
+-- CustomGame is what makes a private-server client cross the lobby -> game
+-- lifecycle boundary. Repeat the snapshot while the client boots so a
+-- one-shot SetValue sent before RoduxController connects cannot strand the
+-- player on the lobby UI.
+local REPLICATION_RETRY_DELAYS = { 0.5, 1, 2, 4 }
+
 local function cloneDictionary<T>(source: { [string]: T }): { [string]: T }
 	local result = {}
 	for key, value in source do
@@ -621,7 +627,19 @@ function CustomGameService.startMatch(self, player: Player)
 	for userIdKey in assignments do
 		participantUserIds[userIdKey] = true
 	end
-	if not self:configureRoundSession(participantUserIds) or not self.context.roundService:startRound() then
+	if not self:configureRoundSession(participantUserIds) then
+		self:updateLocalRecord(function(currentRecord)
+			currentRecord.InGame = false
+		end)
+		self:replicateAll()
+		return
+	end
+	-- The client only tears down LobbyScreen after it observes
+	-- CustomGame.ServerData.InGame. Publish that transition before
+	-- RoundService emits the pregame countdown, otherwise GameController is
+	-- not mounted yet and the countdown event is lost.
+	self:replicateAll()
+	if not self.context.roundService:startRound() then
 		self:updateLocalRecord(function(currentRecord)
 			currentRecord.InGame = false
 		end)
@@ -690,6 +708,21 @@ function CustomGameService.initializePlayer(self, player: Player)
 	self.context.roundService:initializePlayer(player)
 	self:persistPresence()
 	self:replicateAll()
+	local initializedRecordId = record.Id
+	task.spawn(function()
+		for _, delaySeconds in REPLICATION_RETRY_DELAYS do
+			task.wait(delaySeconds)
+			if
+				not self.running
+				or player.Parent ~= Players
+				or self.record == nil
+				or self.record.Id ~= initializedRecordId
+			then
+				return
+			end
+			self:replicatePlayer(player)
+		end
+	end)
 end
 
 function CustomGameService.configureReservedServer(self)
