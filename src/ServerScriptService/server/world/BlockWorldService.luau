@@ -343,12 +343,12 @@ function BlockWorldService.collectFaceTextures(self, part: BasePart, itemType: s
 end
 
 -- Mirrors BlockPlacementService's role gate: breaking is allowed wherever
--- placement would be allowed (custom rounds: inside the arena constraints
+-- placement would be allowed (active rounds: inside the arena constraints
 -- while alive; public game servers: anywhere).
 function BlockWorldService.isInteractionAllowed(self, player: Player, position: Vector3): boolean
 	local runtimeContext = self.context.runtimeContext:get()
 	if runtimeContext.Role == "Private" then
-		return self.context.customGameService:isBlockPlacementAllowed(player, position)
+		return self.context.roundService:isBlockPlacementAllowed(player, position)
 	end
 	return runtimeContext.Role == "Game"
 end

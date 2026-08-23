@@ -206,7 +206,7 @@ end
 function BlockPlacementService.isPlacementAllowedForServer(self, player: Player, position: Vector3): boolean
 	local runtimeContext = self.context.runtimeContext:get()
 	if runtimeContext.Role == "Private" then
-		return self.context.customGameService:isBlockPlacementAllowed(player, position)
+		return self.context.roundService:isBlockPlacementAllowed(player, position)
 	end
 	return runtimeContext.Role == "Game"
 end

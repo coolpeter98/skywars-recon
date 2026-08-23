@@ -1,6 +1,6 @@
 --!strict
 
--- PregameService — the two-phase pre-game that opens every custom round,
+-- PregameService — the two-phase pre-game that opens every game round,
 -- everything driven through surfaces the recovered client already ships:
 --
 -- Phase 1 (the pre-game lobby countdown): the round opens in the Pregame

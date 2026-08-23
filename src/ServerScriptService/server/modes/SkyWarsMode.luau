@@ -4,12 +4,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Color = require(ReplicatedStorage.TS.color).Color
 local GameModes = require(ReplicatedStorage.TS.game["game-mode"]).GameModes
+local TeamAllocator = require(script.Parent.TeamAllocator)
 
-export type CustomGameRecord = {
+export type ModeSession = {
 	Settings: {
 		GameMode: string,
 		MapName: string,
 		AllowTeamSelection: boolean,
+		MinimumPlayers: number?,
 	},
 	TeamAssignments: { [string]: string },
 }
@@ -58,7 +60,17 @@ local SKY_WARS_MAPS = {
 	Neon = true,
 }
 
+local QUEUEABLE_GAME_MODES = {
+	"SkyWarsSolo",
+	"SkyWarsDuos",
+	"SkyWarsTrios",
+	"SkyWarsQuads",
+	"SkyWarsOctos",
+}
+
 local SkyWarsMode = {}
+
+SkyWarsMode.Id = "SkyWars"
 
 local function getDefinition(gameMode: string)
 	local definition = GameModes[gameMode]
@@ -80,8 +92,31 @@ function SkyWarsMode.supportsGameMode(gameMode: string): boolean
 	return getDefinition(gameMode) ~= nil
 end
 
+function SkyWarsMode.supportsCustomGameMode(gameMode: string): boolean
+	return SkyWarsMode.supportsGameMode(gameMode)
+end
+
+function SkyWarsMode.supportsQueueGameMode(gameMode: string): boolean
+	return table.find(QUEUEABLE_GAME_MODES, gameMode) ~= nil
+end
+
+function SkyWarsMode.getQueueableGameModes(): { string }
+	return table.clone(QUEUEABLE_GAME_MODES)
+end
+
 function SkyWarsMode.getDefaultGameMode(): string
 	return "SkyWarsSolo"
+end
+
+function SkyWarsMode.getMapAssetFolder(): string
+	return "SkyWars"
+end
+
+function SkyWarsMode.getStarterInventory(_: string): ({ { Type: string, Quantity: number } }, string?)
+	return {
+		{ Type = "BronzeSword", Quantity = 1 },
+		{ Type = "TeamConcrete", Quantity = 32 },
+	}, "BronzeSword"
 end
 
 function SkyWarsMode.isMapNameValid(mapName: string): boolean
@@ -134,7 +169,7 @@ function SkyWarsMode.buildTeams(gameMode: string, assignments: { [string]: strin
 	return teams
 end
 
-function SkyWarsMode.buildSettings(record: CustomGameRecord): { [string]: any }
+function SkyWarsMode.buildSettings(record: ModeSession): { [string]: any }
 	local definition = getDefinition(record.Settings.GameMode)
 	assert(definition ~= nil, "SkyWars settings require a SkyWars game mode")
 	local mapSettings = table.clone(definition.MapSettings or { Size = "Small" })
@@ -146,14 +181,14 @@ function SkyWarsMode.buildSettings(record: CustomGameRecord): { [string]: any }
 		MapName = record.Settings.MapName,
 		MapSettings = mapSettings,
 		TeamSize = definition.TeamSize,
-		MinPlayers = 0,
+		MinPlayers = record.Settings.MinimumPlayers or 0,
 		MaxPlayers = definition.TeamSize * definition.MaxTeams,
 		Teams = SkyWarsMode.buildTeams(record.Settings.GameMode, record.TeamAssignments),
 		RespawnBehaviour = { Type = "Never" },
 	}
 end
 
-function SkyWarsMode.buildGameTeams(record: CustomGameRecord): { [string]: any }
+function SkyWarsMode.buildGameTeams(record: ModeSession): { [string]: any }
 	local gameTeams = {}
 	for _, team in SkyWarsMode.buildTeams(record.Settings.GameMode, record.TeamAssignments) do
 		gameTeams[team.Id] = {
@@ -210,6 +245,14 @@ function SkyWarsMode.assignBalancedTeams(
 		end
 	end
 	return result
+end
+
+function SkyWarsMode.assignQueuedTeams(gameMode: string, parties: { { number } }): { [string]: string }?
+	local definition = getDefinition(gameMode)
+	if definition == nil then
+		return nil
+	end
+	return TeamAllocator.assignParties(parties, SkyWarsMode.getTeamIds(gameMode), definition.TeamSize)
 end
 
 function SkyWarsMode.sanitizeTeamAssignments(

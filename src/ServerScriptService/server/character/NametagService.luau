@@ -31,7 +31,7 @@
 -- Every one of those client reads is nil-guarded, so a missing value degrades
 -- to "?" / zero instead of erroring. TeamId / Health / Shield / Alive /
 -- Spectating (team color, health bar, and character visibility) are owned by
--- CustomGameService and CombatService already.
+-- RoundService and CombatService already.
 --
 -- Call refreshAttributes(player) again whenever the session profile changes
 -- (e.g. from the future EquipCosmetic / persistence layers) so the nametag

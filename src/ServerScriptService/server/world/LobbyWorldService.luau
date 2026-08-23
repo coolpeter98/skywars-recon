@@ -282,7 +282,7 @@ function LobbyWorldService.start(self)
 	task.spawn(function()
 		while self.started do
 			for _, player in Players:GetPlayers() do
-				-- Match-owned characters are handled by CustomGameService's
+				-- Match-owned characters are handled by RoundService's
 				-- arena-specific VoidY elimination. Rescuing them here races that
 				-- loop, steals the elimination, and can teleport a live fighter
 				-- into the lobby mid-round. Eliminated spectators are match-owned

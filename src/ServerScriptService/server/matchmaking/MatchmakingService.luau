@@ -8,6 +8,7 @@ local TeleportService = game:GetService("TeleportService")
 local LocalMatchmakingStore = require(script.Parent.LocalMatchmakingStore)
 local MatchmakingConfig = require(script.Parent.MatchmakingConfig)
 local MatchmakingStore = require(script.Parent.MatchmakingStore)
+local ModeRegistry = require(script.Parent.Parent.modes.ModeRegistry)
 
 type QueueTicket = MatchmakingStore.QueueTicket
 type MatchRecord = MatchmakingStore.MatchRecord
@@ -247,11 +248,29 @@ function MatchmakingService.selectTickets(
 	local selected: { QueueTicket } = {}
 	local deferred: { QueueTicket } = {}
 	local selectedPlayers = 0
+	local selectedUserIds: { [number]: boolean } = {}
+	local adapter = ModeRegistry.getQueueable(modeConfig.GameMode)
 	for _, ticket in candidates do
 		local ticketPlayers = getTicketPlayerCount(ticket)
-		if selectedPlayers + ticketPlayers <= modeConfig.MaximumPlayers then
+		local hasDuplicateUser = false
+		for _, userId in ticket.UserIds do
+			if selectedUserIds[userId] then
+				hasDuplicateUser = true
+				break
+			end
+		end
+		local parties = {}
+		for _, selectedTicket in selected do
+			table.insert(parties, selectedTicket.UserIds)
+		end
+		table.insert(parties, ticket.UserIds)
+		local fitsTeams = adapter ~= nil and adapter.assignQueuedTeams(modeConfig.GameMode, parties) ~= nil
+		if not hasDuplicateUser and selectedPlayers + ticketPlayers <= modeConfig.MaximumPlayers and fitsTeams then
 			table.insert(selected, ticket)
 			selectedPlayers += ticketPlayers
+			for _, userId in ticket.UserIds do
+				selectedUserIds[userId] = true
+			end
 		else
 			table.insert(deferred, ticket)
 		end
@@ -297,6 +316,15 @@ function MatchmakingService.reserveServer(self): (string?, string?)
 end
 
 function MatchmakingService.createMatch(self, modeConfig: ModeConfig, tickets: { QueueTicket }): boolean
+	local adapter = ModeRegistry.getQueueable(modeConfig.GameMode)
+	local parties = {}
+	for _, ticket in tickets do
+		table.insert(parties, ticket.UserIds)
+	end
+	local teamAssignments = if adapter ~= nil then adapter.assignQueuedTeams(modeConfig.GameMode, parties) else nil
+	if teamAssignments == nil then
+		return false
+	end
 	local matchId = HttpService:GenerateGUID(false)
 	local claimed: { QueueTicket } = {}
 	for _, ticket in tickets do
@@ -329,6 +357,7 @@ function MatchmakingService.createMatch(self, modeConfig: ModeConfig, tickets: {
 		PrivateServerId = privateServerId,
 		TicketIds = ticketIds,
 		UserIds = userIds,
+		TeamAssignments = teamAssignments,
 		CreatedAt = os.time(),
 	}
 	if not self.store:setMatch(matchRecord) then
@@ -368,6 +397,86 @@ function MatchmakingService.configureReservedServer(self)
 		return
 	end
 	self.context.runtimeContext:setGame(matchRecord.GameMode, matchRecord.QueueId, matchRecord.Id)
+	self:configurePublicRound(matchRecord)
+end
+
+function MatchmakingService.configurePublicRound(self, matchRecord: MatchRecord): boolean
+	local modeConfig = MatchmakingConfig.getMode(matchRecord.GameMode)
+	local adapter = ModeRegistry.getQueueable(matchRecord.GameMode)
+	if modeConfig == nil or adapter == nil then
+		warn(("[Matchmaking] Match %s uses a mode without a queue runtime."):format(matchRecord.Id))
+		return false
+	end
+	local participantUserIds = {}
+	for _, userId in matchRecord.UserIds do
+		participantUserIds[tostring(userId)] = true
+	end
+	local assignments = matchRecord.TeamAssignments
+	if assignments == nil then
+		assignments = adapter.assignBalancedTeams(matchRecord.GameMode, matchRecord.UserIds, {})
+	end
+	return self.context.roundService:configure({
+		Id = matchRecord.Id,
+		Kind = "Public",
+		GameMode = matchRecord.GameMode,
+		MapName = "",
+		MinimumPlayers = modeConfig.MinimumPlayers,
+		AllowTeamSelection = false,
+		ParticipantUserIds = participantUserIds,
+		TeamAssignments = assignments,
+		AutoStart = true,
+		Repeatable = false,
+	})
+end
+
+function MatchmakingService.configureStudioRound(self)
+	local runtimeContext = self.context.runtimeContext:get()
+	if not RunService:IsStudio() or runtimeContext.Role ~= "Game" or runtimeContext.GameMode == nil then
+		return
+	end
+	local adapter = ModeRegistry.getQueueable(runtimeContext.GameMode)
+	if adapter == nil then
+		return
+	end
+	local userIds = {}
+	local participantUserIds = {}
+	for _, player in Players:GetPlayers() do
+		table.insert(userIds, player.UserId)
+		participantUserIds[tostring(player.UserId)] = true
+	end
+	self.context.roundService:configure({
+		Id = runtimeContext.MatchId or "studio-test",
+		Kind = "Public",
+		GameMode = runtimeContext.GameMode,
+		MapName = "",
+		MinimumPlayers = 1,
+		AllowTeamSelection = false,
+		ParticipantUserIds = participantUserIds,
+		TeamAssignments = adapter.assignBalancedTeams(runtimeContext.GameMode, userIds, {}),
+		AutoStart = true,
+		Repeatable = false,
+	})
+end
+
+function MatchmakingService.addStudioParticipant(self, player: Player)
+	local session = self.context.roundService.session
+	if
+		not RunService:IsStudio()
+		or session == nil
+		or session.Kind ~= "Public"
+		or self.context.roundService.roundState ~= "Pregame"
+	then
+		return
+	end
+	session.ParticipantUserIds[tostring(player.UserId)] = true
+	local userIds = {}
+	for userIdKey in session.ParticipantUserIds do
+		table.insert(userIds, tonumber(userIdKey) :: number)
+	end
+	local adapter = ModeRegistry.getQueueable(session.GameMode)
+	if adapter ~= nil then
+		session.TeamAssignments = adapter.assignBalancedTeams(session.GameMode, userIds, session.TeamAssignments)
+	end
 end
 
 function MatchmakingService.validateAdmission(self, player: Player)
@@ -530,10 +639,12 @@ function MatchmakingService.start(self)
 	end
 	self.running = true
 	self:configureReservedServer()
+	self:configureStudioRound()
 	table.insert(
 		self.connections,
 		Players.PlayerAdded:Connect(function(player)
 			self.context.runtimeContext:configurePlayer(player)
+			self:addStudioParticipant(player)
 			task.spawn(function()
 				self:validateAdmission(player)
 			end)

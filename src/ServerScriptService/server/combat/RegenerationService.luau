@@ -28,7 +28,7 @@ type RegenerationContext = {
 	outbound: any,
 	playerSessions: any,
 	combatService: any,
-	customGameService: any,
+	roundService: any,
 }
 
 local RegenerationService = {}

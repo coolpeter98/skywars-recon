@@ -70,7 +70,7 @@ type PowerUpContext = {
 	playerSessions: any,
 	inventoryService: any,
 	combatService: any,
-	customGameService: any,
+	roundService: any,
 }
 
 local PowerUpService = {}

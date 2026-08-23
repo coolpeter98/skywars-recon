@@ -15,6 +15,7 @@ local MatchmakingService = require(script.Parent.matchmaking.MatchmakingService)
 local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextService)
 local PartyService = require(script.Parent.party.PartyService)
 local CustomGameService = require(script.Parent.custom.CustomGameService)
+local RoundService = require(script.Parent.game.RoundService)
 local BlockWorldService = require(script.Parent.world.BlockWorldService)
 local LobbyWorldService = require(script.Parent.world.LobbyWorldService)
 local KillLog = require(script.Parent.logging.KillLog)
@@ -54,6 +55,8 @@ function Runtime.new()
 	context.lobbyWorldService = lobbyWorldService
 	local partyService = PartyService.new(context)
 	context.partyService = partyService
+	local roundService = RoundService.new(context)
+	context.roundService = roundService
 	local customGameService = CustomGameService.new(context)
 	context.customGameService = customGameService
 	local matchmakingService = MatchmakingService.new(context)
@@ -89,6 +92,7 @@ function Runtime.new()
 		playerSessions = playerSessions,
 		partyService = partyService,
 		lobbyWorldService = lobbyWorldService,
+		roundService = roundService,
 		customGameService = customGameService,
 		inventoryService = inventoryService,
 		combatService = combatService,
@@ -112,8 +116,9 @@ function Runtime.start(self)
 	end
 	self.partyService:start()
 	self.lobbyWorldService:start()
-	self.customGameService:start()
 	self.matchmakingService:start()
+	self.customGameService:start()
+	self.roundService:start()
 	self.inventoryService:start()
 	self.combatService:start()
 	self.projectileService:start()
@@ -132,6 +137,7 @@ function Runtime.stop(self)
 	if not self.started then
 		return
 	end
+	self.roundService:stop()
 	self.customGameService:stop()
 	self.partyService:stop()
 	self.lobbyWorldService:stop()

@@ -25,6 +25,7 @@ export type MatchRecord = {
 	PrivateServerId: string,
 	TicketIds: { string },
 	UserIds: { number },
+	TeamAssignments: { [string]: string },
 	CreatedAt: number,
 }
 

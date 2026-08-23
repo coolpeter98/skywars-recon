@@ -1,5 +1,5 @@
 --!strict
--- MapService — builds and owns the active arena for custom-game rounds.
+-- MapService — builds and owns the active arena for any game round.
 --
 -- Primary path: imported maps. A map is a Model under
 -- ServerStorage.Maps.SkyWars.<MapName> (the original game's convention, read
@@ -41,7 +41,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
-local ModeRegistry = require(script.Parent.modes.ModeRegistry)
+local ModeRegistry = require(script.Parent.Parent.modes.ModeRegistry)
 local ChestLoot = require(script.Parent.Parent.world.ChestLoot)
 
 export type BuildConstraint = {
@@ -187,8 +187,8 @@ end
 
 local function buildTemplate(gameMode: string, destination: Instance): Model
 	local adapter = ModeRegistry.get(gameMode)
-	assert(adapter ~= nil, "No custom-game adapter for " .. gameMode)
-	local mapRoot = ServerStorage:WaitForChild("Maps"):WaitForChild("SkyWars")
+	assert(adapter ~= nil, "No mode adapter for " .. gameMode)
+	local mapRoot = ServerStorage:WaitForChild("Maps"):WaitForChild(adapter.getMapAssetFolder())
 	local configFolder = mapRoot:WaitForChild(adapter.getMapConfigFolder(gameMode))
 	local config = require(configFolder:WaitForChild("MapConfig"))
 	local teamIds = adapter.getTeamIds(gameMode)
@@ -275,8 +275,9 @@ end
 
 function MapService.ensureTemplate(self, gameMode: string): Model
 	local adapter = ModeRegistry.get(gameMode)
-	assert(adapter ~= nil, "Unsupported custom game mode")
-	local modeFolder = ServerStorage.Maps.SkyWars:FindFirstChild(adapter.getMapConfigFolder(gameMode))
+	assert(adapter ~= nil, "Unsupported game mode")
+	local mapFolder = ServerStorage.Maps:FindFirstChild(adapter.getMapAssetFolder())
+	local modeFolder = mapFolder and mapFolder:FindFirstChild(adapter.getMapConfigFolder(gameMode))
 	assert(modeFolder ~= nil, "Missing placeholder map folder for " .. gameMode)
 	local template = modeFolder:FindFirstChild("Template")
 	if template and template:IsA("Model") and template:GetAttribute("TemplateVersion") == TEMPLATE_VERSION then
@@ -308,13 +309,16 @@ end
 
 local function getImportedMapNames(gameMode: string): { string }
 	local adapter = ModeRegistry.get(gameMode)
+	if adapter == nil then
+		return {}
+	end
 	local maps = ServerStorage:FindFirstChild("Maps")
-	local skyWarsMaps = maps and maps:FindFirstChild("SkyWars")
+	local modeMaps = maps and maps:FindFirstChild(adapter.getMapAssetFolder())
 	local mapNames = {}
-	if adapter == nil or skyWarsMaps == nil then
+	if modeMaps == nil then
 		return mapNames
 	end
-	for _, child in skyWarsMaps:GetChildren() do
+	for _, child in modeMaps:GetChildren() do
 		if
 			child:IsA("Model")
 			and adapter.isMapNameValid(child.Name)
@@ -337,8 +341,8 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 		return nil
 	end
 	local maps = ServerStorage:FindFirstChild("Maps")
-	local skyWarsMaps = maps and maps:FindFirstChild("SkyWars")
-	local mapAsset = skyWarsMaps and skyWarsMaps:FindFirstChild(mapName)
+	local modeMaps = maps and maps:FindFirstChild(adapter.getMapAssetFolder())
+	local mapAsset = modeMaps and modeMaps:FindFirstChild(mapName)
 	if mapAsset == nil or not mapAsset:IsA("Model") then
 		return nil
 	end

@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GameModeModule = require(ReplicatedStorage.TS.game["game-mode"])
 local GameModes = GameModeModule.GameModes
+local ModeRegistry = require(script.Parent.Parent.modes.ModeRegistry)
 
 export type ModeConfig = {
 	GameMode: string,
@@ -13,16 +14,7 @@ export type ModeConfig = {
 	MaximumPlayers: number,
 }
 
-local MODE_ORDER = {
-	"SkyWarsSolo",
-	"SkyWarsDuos",
-	"SkyWarsTrios",
-	"SkyWarsQuads",
-	"SkyWarsOctos",
-	"DuelsSolo",
-	"DuelsDuos",
-	"EggWarsQuads",
-}
+local MODE_ORDER = ModeRegistry.getQueueableGameModes()
 
 local MatchmakingConfig = {
 	StoreNamespace = "skywars-matchmaking-v1",

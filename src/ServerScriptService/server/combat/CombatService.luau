@@ -10,7 +10,7 @@
 --     read those attributes, not the Humanoid.
 --   * `DamageDealt` broadcast — damage indicators + hit highlight.
 --   * `DamageImpulse` — knockback, applied by PlayerVelocityController.
---   * Elimination via CustomGameService, which publishes `PlayerKilled`
+--   * Elimination via RoundService, which publishes `PlayerKilled`
 --     (kill feed) and `PlayerEliminated` (spectating / round end).
 --
 -- Character combat hitboxes: the client's melee raycast is a WHITELIST of
@@ -128,7 +128,7 @@ local LINE_OF_SIGHT_MARGIN = 1.5
 type CombatContext = {
 	outbound: any,
 	playerSessions: any,
-	customGameService: any,
+	roundService: any,
 	powerUpService: any,
 	regenerationService: any,
 	killLog: any,
@@ -183,9 +183,8 @@ function CombatService.new(context: CombatContext)
 end
 
 function CombatService:isInRound(): boolean
-	local customGameService = self.context.customGameService
-	local record = customGameService and customGameService.record or nil
-	return record ~= nil and record.InGame == true and customGameService.roundState == "InGame"
+	local roundService = self.context.roundService
+	return roundService ~= nil and roundService:isInRound()
 end
 
 -- Welds one of the client's expected combat hitboxes onto a character.
@@ -477,7 +476,7 @@ function CombatService:dealDamage(
 
 	-- Combat tagging: every validated hit marks the attacker (including
 	-- zero-damage knockback like Snowball) so Fall/Void eliminations can
-	-- credit the last hitter. CustomGameService.eliminatePlayer consumes
+	-- credit the last hitter. RoundService.eliminatePlayer consumes
 	-- the tag when no direct killer exists.
 	if attacker ~= nil then
 		local weapon: string? = nil
@@ -575,9 +574,9 @@ function CombatService:dealDamage(
 
 	if newHealth <= HealthConstants.MIN_HEALTH then
 		local killer = if attacker ~= nil and attacker.Parent == Players then attacker else nil
-		local customGameService = self.context.customGameService
-		if customGameService ~= nil then
-			customGameService:eliminatePlayer(target, damageType, killer)
+		local roundService = self.context.roundService
+		if roundService ~= nil then
+			roundService:eliminatePlayer(target, damageType, killer)
 		end
 		self:ragdoll(targetCharacter)
 	end
@@ -678,9 +677,9 @@ function CombatService:meleeStrikeEntity(player: Player, entity: Model)
 			local roundId: number? = nil
 			local gameMode: string? = nil
 			local mapName: string? = nil
-			local customGameService = self.context.customGameService
-			if customGameService ~= nil and customGameService.getRoundInfo ~= nil then
-				local roundInfo = customGameService:getRoundInfo()
+			local roundService = self.context.roundService
+			if roundService ~= nil then
+				local roundInfo = roundService:getRoundInfo()
 				roundId = roundInfo.RoundId
 				gameMode = roundInfo.GameMode
 				mapName = roundInfo.MapName
