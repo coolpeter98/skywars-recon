@@ -65,8 +65,8 @@ function LocalCustomGameStore.listPublic(self, maximumCount: number): { any }
 	return result
 end
 
-function LocalCustomGameStore.removeRecord(self, recordId: string)
-	local record = self.records[recordId]
+function LocalCustomGameStore.removeRecord(self, recordId: string, knownRecord)
+	local record = knownRecord or self.records[recordId]
 	if record == nil then
 		return
 	end

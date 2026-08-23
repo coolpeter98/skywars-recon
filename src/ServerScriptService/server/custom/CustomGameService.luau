@@ -63,6 +63,7 @@ function CustomGameService.new(context)
 		connections = {} :: { RBXScriptConnection },
 		characterConnections = {} :: { [Player]: RBXScriptConnection },
 		humanoidConnections = {} :: { [Player]: RBXScriptConnection },
+		leavingPlayers = {} :: { [Player]: boolean },
 		eliminatedPlayers = {} :: { Player },
 		roundId = 0,
 		roundState = "Pregame",
@@ -70,9 +71,10 @@ function CustomGameService.new(context)
 	}, CustomGameService)
 end
 
-function CustomGameService.notify(self, player: Player, message: string, success: boolean?)
-	local color = if success then Color3.fromRGB(102, 255, 99) else Color3.fromRGB(255, 92, 92)
-	self.context.outbound:fire("Alert", player, "Custom Game", message, color, 3.5)
+function CustomGameService.notify(_, player: Player, message: string, _: boolean?)
+	-- Custom-game actions do not use the global client Alert surface. Keep
+	-- rejected requests visible to server operators without pushing a toast.
+	warn(("[CustomGame] %s (%d): %s"):format(player.Name, player.UserId, message))
 end
 
 function CustomGameService.toServerData(self, record: CustomGameRecord)
@@ -522,7 +524,9 @@ function CustomGameService.setPrivacy(self, player: Player, privacy: string)
 end
 
 function CustomGameService.setMap(self, player: Player, mapName: string)
-	local record = self:requireOwner(player)
+	-- Map selection is configuration for the next round. Updating it while a
+	-- round is live must not replace the already-loaded arena.
+	local record = self:requireOwner(player, true)
 	local adapter = self:getAdapter(record)
 	if record == nil or adapter == nil or not adapter.isMapNameValid(mapName) then
 		if record ~= nil then
@@ -808,10 +812,7 @@ function CustomGameService.getRoundInfo(self): { RoundId: number?, GameMode: str
 	if record == nil then
 		return {}
 	end
-	local mapName = record.Settings.MapName
-	if (mapName == "" or mapName == nil) and self.loadedMap ~= nil then
-		mapName = self.loadedMap.Model.Name
-	end
+	local mapName = if self.loadedMap ~= nil then self.loadedMap.Model.Name else record.Settings.MapName
 	return {
 		RoundId = self.roundId,
 		GameMode = record.Settings.GameMode,
@@ -1021,18 +1022,36 @@ function CustomGameService.bindPlayer(self, player: Player)
 end
 
 function CustomGameService.validateAdmission(self, player: Player): boolean
-	local record = self.record
-	if record == nil then
+	local cachedRecord = self.record
+	if cachedRecord == nil then
 		return false
 	end
 	local userIdKey = tostring(player.UserId)
-	if
-		record.BannedUserIds[userIdKey] or (record.OwnerId ~= player.UserId and not record.AdmittedUserIds[userIdKey])
-	then
+	local deadline = os.clock() + CustomGameConfig.AdmissionValidationTimeout
+	repeat
+		-- Lobby servers add admissions after the reserved server has already
+		-- cached its startup record. Always validate arrivals against the shared
+		-- record so the first join attempt sees that newly committed admission.
+		local record = self.store:getRecord(cachedRecord.Id)
+		if record ~= nil then
+			self.record = record
+			if record.BannedUserIds[userIdKey] then
+				player:Kick("You are not admitted to this custom game.")
+				return false
+			end
+			if record.OwnerId == player.UserId or record.AdmittedUserIds[userIdKey] then
+				return true
+			end
+		end
+		if os.clock() >= deadline then
+			break
+		end
+		task.wait(CustomGameConfig.AdmissionValidationInterval)
+	until player.Parent ~= Players
+	if player.Parent == Players then
 		player:Kick("You are not admitted to this custom game.")
-		return false
 	end
-	return true
+	return false
 end
 
 function CustomGameService.initializePlayer(self, player: Player)
@@ -1079,6 +1098,7 @@ function CustomGameService.configureReservedServer(self)
 end
 
 function CustomGameService.onPlayerRemoving(self, player: Player)
+	self.leavingPlayers[player] = true
 	local record = self.record
 	if record == nil then
 		return
@@ -1100,9 +1120,19 @@ function CustomGameService.onPlayerRemoving(self, player: Player)
 		if self.record == nil then
 			return
 		end
-		local remainingPlayers = Players:GetPlayers()
+		local remainingPlayers = {}
+		for _, candidate in Players:GetPlayers() do
+			-- PlayerRemoving may run before Roblox removes departing Players from
+			-- Players. Exclude every removal already in flight so simultaneous
+			-- departures still tear down the browser record.
+			if candidate ~= player and not self.leavingPlayers[candidate] and candidate.Parent == Players then
+				table.insert(remainingPlayers, candidate)
+			end
+		end
 		if #remainingPlayers == 0 then
-			self.store:removeRecord(self.record.Id)
+			local recordToRemove = self.record
+			self.record = nil
+			self.store:removeRecord(recordToRemove.Id, recordToRemove)
 			return
 		end
 		if self.record.OwnerId == player.UserId then
@@ -1208,6 +1238,13 @@ end
 
 function CustomGameService.stop(self)
 	self.running = false
+	local recordToRemove = self.record
+	self.record = nil
+	if recordToRemove ~= nil then
+		-- BindToClose reaches this path even when PlayerRemoving cleanup never
+		-- ran (crash/migration/forced shutdown). Do not leave its public lease.
+		self.store:removeRecord(recordToRemove.Id, recordToRemove)
+	end
 	for _, connection in self.connections do
 		connection:Disconnect()
 	end
@@ -1220,6 +1257,7 @@ function CustomGameService.stop(self)
 	table.clear(self.connections)
 	table.clear(self.characterConnections)
 	table.clear(self.humanoidConnections)
+	table.clear(self.leavingPlayers)
 	self.pregameService:clear()
 	self.mapService:unload()
 	self.context.blockWorldService:clear()

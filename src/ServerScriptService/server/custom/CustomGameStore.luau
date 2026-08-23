@@ -143,24 +143,40 @@ function CustomGameStore.listPublic(self, maximumCount: number): { CustomGameRec
 		return {}
 	end
 	local records = {}
+	local staleBefore = os.time() - CustomGameConfig.ServerStaleAfter
 	for _, entry in entries do
 		local record = entry.value or entry.Value
-		if type(record) == "table" and record.Privacy == "Public" then
+		local isLive = type(record) == "table"
+			and record.Privacy == "Public"
+			and type(record.UpdatedAt) == "number"
+			and record.UpdatedAt >= staleBefore
+			and type(record.PlayersOnline) == "number"
+			and type(record.SpectatorsOnline) == "number"
+			and record.PlayersOnline + record.SpectatorsOnline > 0
+		if isLive then
 			table.insert(records, record)
+		else
+			local recordId = if type(record) == "table" then record.Id else entry.key or entry.Key
+			if type(recordId) == "string" then
+				task.spawn(function()
+					self:retry("remove stale public custom server " .. recordId, function()
+						self.publicServers:RemoveAsync(recordId)
+					end)
+				end)
+			end
 		end
 	end
 	return records
 end
 
-function CustomGameStore.removeRecord(self, recordId: string)
-	local record = self:getRecord(recordId)
-	if record == nil then
-		return
-	end
+function CustomGameStore.removeRecord(self, recordId: string, knownRecord: CustomGameRecord?)
+	local record = knownRecord or self:getRecord(recordId)
 	self:retry("remove custom server " .. recordId, function()
 		self.records:RemoveAsync("server:" .. recordId)
-		self.records:RemoveAsync("private-server:" .. record.PrivateServerId)
-		self.records:RemoveAsync("key:" .. record.ServerKey)
+		if record ~= nil then
+			self.records:RemoveAsync("private-server:" .. record.PrivateServerId)
+			self.records:RemoveAsync("key:" .. record.ServerKey)
+		end
 		self.publicServers:RemoveAsync(recordId)
 	end)
 end
