@@ -116,6 +116,11 @@ local CHARACTER_HITBOXES: { HitboxConfig } = {
 	},
 }
 
+-- CharacterAdded can race character replacement during Studio/custom-game
+-- transitions. Reconcile periodically as a backstop so a missed event, a
+-- removed hitbox, or a broken weld cannot leave melee disabled indefinitely.
+local HITBOX_RECONCILE_SECONDS = 0.5
+
 -- The line-of-sight ray stops this far short of the target root so a wall or
 -- floor directly behind the target never blocks the strike.
 local LINE_OF_SIGHT_MARGIN = 1.5
@@ -172,6 +177,7 @@ function CombatService.new(context: CombatContext)
 		lastAttackers = {} :: { [Player]: { Attacker: Player, Weapon: string?, Time: number } },
 		playerAddedConnection = nil :: RBXScriptConnection?,
 		characterConnections = {} :: { [Player]: RBXScriptConnection },
+		hitboxReconcileGeneration = 0,
 		started = false,
 	}, CombatService)
 end
@@ -184,9 +190,30 @@ end
 
 -- Welds one of the client's expected combat hitboxes onto a character.
 function CombatService:attachHitbox(character: Model, config: HitboxConfig)
-	if character:FindFirstChild(config.Name) ~= nil then
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root == nil or not root:IsA("BasePart") then
 		return
 	end
+
+	local existing = character:FindFirstChild(config.Name)
+	if existing ~= nil and existing:IsA("BasePart") then
+		local weld = existing:FindFirstChildOfClass("Weld")
+		if weld ~= nil and weld.Part0 == root and weld.Part1 == existing then
+			existing.Size = config.Size
+			existing.Transparency = 1
+			existing.CanCollide = false
+			existing.CanTouch = false
+			existing.CanQuery = true
+			existing.Massless = true
+			existing.CastShadow = false
+			weld.C0 = config.Offset
+			return
+		end
+	end
+	if existing ~= nil then
+		existing:Destroy()
+	end
+
 	local hitbox = Instance.new("Part")
 	hitbox.Name = config.Name
 	hitbox.Size = config.Size
@@ -196,37 +223,19 @@ function CombatService:attachHitbox(character: Model, config: HitboxConfig)
 	hitbox.CanQuery = true
 	hitbox.Massless = true
 	hitbox.CastShadow = false
+	hitbox.CFrame = root.CFrame * config.Offset
 	hitbox.Parent = character
-	task.spawn(function()
-		if character.Parent == nil then
-			return
-		end
-		local root = character:WaitForChild("HumanoidRootPart", 10)
-		if root == nil or not root:IsA("BasePart") then
-			return
-		end
-		-- Use the classic Weld joint: WeldConstraint.C0/C1 are NOT scriptable
-		-- in current Roblox builds, while Weld.C0 is. The part stays a direct
-		-- child of the character model because the client's melee raycast
-		-- looks it up with Character:FindFirstChild("Hitbox").
-		local weld = Instance.new("Weld")
-		weld.Part0 = root
-		weld.Part1 = hitbox
-		weld.C0 = config.Offset
-		weld.Parent = hitbox
-		-- Self-heal: if anything removes the hitbox while the character is
-		-- still alive, put it straight back.
-		hitbox.Destroying:Connect(function()
-			local player = Players:GetPlayerFromCharacter(character)
-			if player ~= nil and player.Character == character then
-				task.delay(0.2, function()
-					if player.Character == character and character.Parent ~= nil then
-						self:attachHitbox(character, config)
-					end
-				end)
-			end
-		end)
-	end)
+
+	-- Use the classic Weld joint: WeldConstraint.C0/C1 are NOT scriptable in
+	-- current Roblox builds, while Weld.C0 is. The part stays a direct child
+	-- of the character model because the client's melee raycast looks it up
+	-- with Character:FindFirstChild("Hitbox").
+	local weld = Instance.new("Weld")
+	weld.Name = "CombatHitboxWeld"
+	weld.Part0 = root
+	weld.Part1 = hitbox
+	weld.C0 = config.Offset
+	weld.Parent = hitbox
 end
 
 -- Every character gets the combat hitboxes the client's raycasts expect.
@@ -242,11 +251,25 @@ function CombatService:bindPlayer(player: Player)
 		existing:Disconnect()
 	end
 	self.characterConnections[player] = player.CharacterAdded:Connect(function(character)
-		self:ensureHitboxes(character)
+		task.spawn(function()
+			local root = character:WaitForChild("HumanoidRootPart", 10)
+			if root ~= nil and root:IsA("BasePart") and player.Character == character and character.Parent ~= nil then
+				self:ensureHitboxes(character)
+			end
+		end)
 	end)
 	local character = player.Character
 	if character ~= nil then
 		self:ensureHitboxes(character)
+	end
+end
+
+function CombatService:reconcileHitboxes()
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		if character ~= nil and character.Parent ~= nil then
+			self:ensureHitboxes(character)
+		end
 	end
 end
 
@@ -714,10 +737,19 @@ function CombatService.start(self)
 	for _, player in Players:GetPlayers() do
 		self:bindPlayer(player)
 	end
+	self.hitboxReconcileGeneration += 1
+	local generation = self.hitboxReconcileGeneration
+	task.spawn(function()
+		while self.started and self.hitboxReconcileGeneration == generation do
+			self:reconcileHitboxes()
+			task.wait(HITBOX_RECONCILE_SECONDS)
+		end
+	end)
 end
 
 function CombatService.stop(self)
 	self.started = false
+	self.hitboxReconcileGeneration += 1
 	if self.playerAddedConnection ~= nil then
 		self.playerAddedConnection:Disconnect()
 		self.playerAddedConnection = nil
