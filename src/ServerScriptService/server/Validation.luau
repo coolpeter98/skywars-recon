@@ -55,6 +55,16 @@ function Validation.instance(className: string?): ValueValidator
 	end
 end
 
+function Validation.replicatedPlayer(value: any): boolean
+	return type(value) == "table"
+		and Validation.integer(value.UserId)
+		and value.UserId > 0
+		and type(value.UserName) == "string"
+		and #value.UserName <= 64
+		and type(value.DisplayName) == "string"
+		and #value.DisplayName <= 64
+end
+
 function Validation.optional(validator: ValueValidator): ValueValidator
 	return function(value: any): boolean
 		return value == nil or validator(value)

@@ -208,10 +208,10 @@ local function PartyPlayer(props: PartyPlayerProps)
 						return nil
 					elseif
 						props.Player.Status == SocialStatus.InGame
-						and (
-							props.Player.PlaceId ~= nil
-							and (props.Player.PlaceId ~= 0 and PlaceUtil.isOurUniverse(props.Player.PlaceId))
-						)
+						and (props.Player.PlaceId ~= nil and (props.Player.PlaceId ~= 0 and PlaceUtil.isOurUniverse(
+							props.Player.PlaceId
+						)))
+						and props.Player.GameId == game.JobId
 					then
 						Flamework.resolveDependency("PrB"):invitePlayer(props.Player, false)
 					else

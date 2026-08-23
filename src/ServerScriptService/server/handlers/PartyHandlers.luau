@@ -2,6 +2,12 @@
 
 local Validation = require(script.Parent.Parent.Validation)
 
+type ReplicatedPlayer = {
+	UserId: number,
+	UserName: string,
+	DisplayName: string,
+}
+
 local PartyHandlers = {}
 PartyHandlers.__index = PartyHandlers
 
@@ -9,7 +15,7 @@ function PartyHandlers.new(context)
 	return setmetatable({ context = context }, PartyHandlers)
 end
 
-function PartyHandlers.invitePlayer(self, player: Player, invitedPlayer: Player, isOffline: boolean)
+function PartyHandlers.invitePlayer(self, player: Player, invitedPlayer: ReplicatedPlayer, isOffline: boolean)
 	self.context.partyService:invite(player, invitedPlayer, isOffline)
 end
 function PartyHandlers.promotePlayer(self, player: Player, promotedPlayer: Player)
@@ -29,7 +35,7 @@ function PartyHandlers.getRoutes(self)
 	return {
 		{
 			Name = "InvitePlayerToParty",
-			Validate = Validation.tuple({ Validation.instance("Player"), Validation.boolean }),
+			Validate = Validation.tuple({ Validation.replicatedPlayer, Validation.boolean }),
 			Handle = function(player, arguments)
 				self:invitePlayer(player, arguments[1], arguments[2])
 			end,
