@@ -7,13 +7,12 @@
 --
 --	<MapName> (Model)
 --	├── WorldData (Folder)
---	│	├── Spawn (CFrameValue)          — the map's own anchor point; the map
---	│	│                                  is placed so this lands at MAP_ORIGIN
+--	│	├── Spawn (CFrameValue)          — authored world-spawn metadata
 --	│	├── Chest (Folder) > Tier (Folder)
 --	│	│	├── 1..4 (Folder)             — one folder per chest tier
 --	│	│	│	└── <n> (CFrameValue)      — chest position (+ yaw rotation); the
 --	│	│	                                CFrameValue's name equals its tier
---	│	├── GameSpawn (Folder)           — per-direction island spots (unused)
+--	│	├── GameSpawn (Folder)           — per-direction island surface spots
 --	│	└── ContestSpawn (Folder)        — per-direction contest spots (unused)
 --	├── SpawnLocations (Folder)          — SpawnLocation parts named 1..12
 --	├── SpawnLocation                    — mirrors WorldData.Spawn (anchor)
@@ -28,10 +27,8 @@
 -- AnimationController/Animator rig the client's chest component requires)
 -- at each CFrameValue, with the tier's loot rolled from ChestLoot.
 --
--- Fallback path: when the selected map has no imported model (or no map is
--- selected, i.e. "random"), the per-mode placeholder template is generated
--- (one island per team plus a center island with loot chests) exactly as
--- before imported maps were supported.
+-- Random selects one of the valid imported maps. The per-mode placeholder is
+-- only a recovery path when no valid imported map can be loaded.
 --
 -- Either way the arena is cloned into Workspace.BlockContainer, named after
 -- the selected map (placeholders are named "Placeholder"), as a sibling of
@@ -62,16 +59,11 @@ export type LoadedMap = {
 	VoidY: number,
 }
 
--- The anchor point (WorldData.Spawn) of a map — and the center of a
--- placeholder template — is placed at this world position; the rest of the
--- map keeps its saved offsets.
-local MAP_ORIGIN = Vector3.new(0, 300, 0)
--- The client's block grid places block centers on world multiples of 3, so
--- block bottoms land on Y ≡ 1.5 (mod 3). Real maps store their build
--- surfaces (chest floors, island decks) at local Y ≡ 1.5 (mod 3); anchoring
--- the map's Spawn point at MAP_ORIGIN would land those surfaces at ≡ 0
--- (mod 3), exactly 1.5 studs off the grid, so maps are shifted down 1.5.
-local MAP_GRID_Y_OFFSET = Vector3.new(0, -1.5, 0)
+-- Recovered maps are already authored around world origin. Keeping those
+-- coordinates places every arena below the pre-game lobby (whose floor is at
+-- roughly Y=134) and preserves the maps' native three-stud block grid. This
+-- origin is only used by the generated recovery placeholder.
+local MAP_ORIGIN = Vector3.zero
 local BLOCK_SIZE = 3
 local BUILD_HORIZONTAL_PADDING = 36
 local BUILD_MIN_Y_PADDING = 12
@@ -80,7 +72,7 @@ local VOID_BELOW_MAP = 60
 local SPECTATOR_HEIGHT = 100
 local PLATFORM_BLOCK_NAME = "StoneBricks"
 local PLACED_BLOCK_TAG = "block:placed"
-local TEMPLATE_VERSION = 4
+local TEMPLATE_VERSION = 5
 local CHEST_ASSET_NAMES = { "ChestTierOne", "ChestTierTwo", "ChestTierThree", "ChestTierFour" }
 -- The placeholder chests sat with their base 1.5 studs below their position;
 -- real chest models are placed with the same base height so they sit on the
@@ -277,6 +269,7 @@ end
 function MapService.new()
 	return setmetatable({
 		activeMap = nil :: Model?,
+		random = Random.new(),
 	}, MapService)
 end
 
@@ -313,6 +306,28 @@ local function getAnchorPosition(mapAsset: Model): Vector3?
 	return nil
 end
 
+local function getImportedMapNames(gameMode: string): { string }
+	local adapter = ModeRegistry.get(gameMode)
+	local maps = ServerStorage:FindFirstChild("Maps")
+	local skyWarsMaps = maps and maps:FindFirstChild("SkyWars")
+	local mapNames = {}
+	if adapter == nil or skyWarsMaps == nil then
+		return mapNames
+	end
+	for _, child in skyWarsMaps:GetChildren() do
+		if
+			child:IsA("Model")
+			and adapter.isMapNameValid(child.Name)
+			and getAnchorPosition(child) ~= nil
+			and child:FindFirstChild("SpawnLocations") ~= nil
+		then
+			table.insert(mapNames, child.Name)
+		end
+	end
+	table.sort(mapNames)
+	return mapNames
+end
+
 -- Tries to load an imported map into `blockContainer`. Returns nil when
 -- no such map is imported (or the map is malformed) so load() can fall back
 -- to the placeholder arena.
@@ -328,8 +343,7 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 		return nil
 	end
 
-	local anchorPosition = getAnchorPosition(mapAsset)
-	if anchorPosition == nil then
+	if getAnchorPosition(mapAsset) == nil then
 		warn(("[MapService] map %q has no WorldData.Spawn anchor"):format(mapName))
 		return nil
 	end
@@ -339,9 +353,11 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	map:SetAttribute("SelectedMapName", mapName)
 	map:SetAttribute("Placeholder", false)
 
-	-- Identity rotation: map geometry is axis-aligned in its saved space.
-	local rootCFrame = CFrame.new(MAP_ORIGIN - anchorPosition + MAP_GRID_Y_OFFSET)
-	map:PivotTo(rootCFrame)
+	-- The recovered assets already use their intended game-world coordinates.
+	-- Do not PivotTo a synthetic anchor here: PivotTo consumes an absolute
+	-- model pivot, not a transform. Since most maps have a saved pivot at
+	-- Y=1.5 (Airport happens to use Y=0), doing so shifted their geometry off
+	-- the client's three-stud grid and moved every arena above the lobby.
 	map.Parent = blockContainer
 
 	-- Read team spawns from the numbered SpawnLocations (spawn index 1..N maps
@@ -387,7 +403,7 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 			map:Destroy()
 			return nil
 		end
-		spawnPositions[teamId] = rootCFrame * spawnLocation.CFrame
+		spawnPositions[teamId] = spawnLocation.CFrame
 	end
 	spawnLocationsFolder:Destroy()
 
@@ -426,7 +442,7 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 							-- rotation.
 							createChest(
 								("Chest_T%d_%d"):format(tier, chestIndex),
-								rootCFrame * cframeValue.Value * CFrame.Angles(0, math.pi, 0),
+								cframeValue.Value * CFrame.Angles(0, math.pi, 0),
 								tier,
 								map,
 								0
@@ -458,13 +474,22 @@ function MapService.load(self, gameMode: string, selectedMapName: string): Loade
 		blockContainer.Name = "BlockContainer"
 		blockContainer.Parent = Workspace
 	end
-	if selectedMapName ~= "" then
-		local map = self:loadMap(gameMode, selectedMapName, blockContainer)
+	local resolvedMapName = selectedMapName
+	if resolvedMapName == "" then
+		local importedMapNames = getImportedMapNames(gameMode)
+		if #importedMapNames > 0 then
+			resolvedMapName = importedMapNames[self.random:NextInteger(1, #importedMapNames)]
+		end
+	end
+	if resolvedMapName ~= "" then
+		local map = self:loadMap(gameMode, resolvedMapName, blockContainer)
 		if map ~= nil then
 			self.activeMap = map.Model
 			return map
 		end
-		warn(("[MapService] map %q is not imported; using the placeholder arena"):format(selectedMapName))
+		warn(("[MapService] map %q is not imported; using the placeholder arena"):format(resolvedMapName))
+	elseif selectedMapName == "" then
+		warn("[MapService] no valid imported maps are available for Random; using the placeholder arena")
 	end
 	local template = self:ensureTemplate(gameMode)
 	local placeholderMap = template:Clone()

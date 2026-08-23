@@ -200,6 +200,12 @@ function BlockRaycastController.executeRaycast(self: BlockRaycastController, scr
 			["RaycastType"] = RaycastType.Paused
 		}
 	end
+	local rotation = 0
+	if item.Block ~= nil and item.Block.Rotation then
+		local _, yawRadians = Workspace.CurrentCamera.CFrame:ToOrientation()
+		local yawDegrees = math.deg(yawRadians) / 90
+		rotation = math.round(yawDegrees) * 90
+	end
 	local same = self.blockRaycastStored
 	if same then
 		if self.blockRaycastStored.RaycastType == raycastResult.RaycastType and self.blockRaycastStored.BlockPosition == raycastResult.BlockPosition then
@@ -209,19 +215,16 @@ function BlockRaycastController.executeRaycast(self: BlockRaycastController, scr
 		end
 	end
 	if same then
-		local containerName = self.blockRaycastStored.Container
-		if containerName ~= nil then
-			containerName = containerName.Name
-		end
-		same = containerName == item.Name
+		-- Preview/select containers use synthetic names ("Preview"/"Select"),
+		-- so comparing the Instance name with the held item recreated the
+		-- container and its Highlight every tick. Track the item explicitly so
+		-- a stationary preview keeps the same render instances.
+		same = self.blockRaycastStored.ItemName == item.Name and self.blockRaycastStored.Rotation == rotation
 	end
 	if same then
 		return self.blockRaycastStored
 	end
 	self:manageState(raycastResult.RaycastType ~= RaycastType.VoidCast)
-	local _, yawRadians = Workspace.CurrentCamera.CFrame:ToOrientation()
-	local yawDegrees = math.deg(yawRadians) / 90
-	local rotation = math.round(yawDegrees) * 90
 	local container
 	if raycastMode == RaycastMode.SELECT then
 		container = self:select(raycastResult.BlockPosition)
@@ -233,6 +236,7 @@ function BlockRaycastController.executeRaycast(self: BlockRaycastController, scr
 		["RaycastType"] = raycastResult.RaycastType,
 		["BlockPosition"] = raycastResult.BlockPosition,
 		["Container"] = container,
+		["ItemName"] = item.Name,
 		["CameraDirection"] = CameraUtil.getDirection(),
 		["Rotation"] = rotation
 	}

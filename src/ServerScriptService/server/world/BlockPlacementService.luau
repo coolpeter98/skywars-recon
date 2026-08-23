@@ -1,7 +1,6 @@
 --!strict
 
 local CollectionService = game:GetService("CollectionService")
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -145,18 +144,6 @@ local function hasAdjacentBlock(blockContainer: Instance, position: Vector3): bo
 	return false
 end
 
-local function intersectsCharacter(position: Vector3): boolean
-	for _, part in Workspace:GetPartBoundsInBox(CFrame.new(position), BLOCK_DIMENSION * 0.99) do
-		local character = part:FindFirstAncestorOfClass("Model")
-		if character ~= nil and Players:GetPlayerFromCharacter(character) ~= nil then
-			if part.Name == "Head" or (part.Name == "UpperTorso" and part.Position.Y < position.Y) then
-				return true
-			end
-		end
-	end
-	return false
-end
-
 local function getPlayerRoot(player: Player): BasePart?
 	local character = player.Character
 	if character == nil then
@@ -257,11 +244,10 @@ function BlockPlacementService.placeBlock(
 	self.reservedPositions[position] = true
 	local success, placementResult = pcall(function(): boolean
 		local blockContainer = getBlockContainer()
-		if
-			containsBlock(blockContainer, position)
-			or not hasAdjacentBlock(blockContainer, position)
-			or intersectsCharacter(position)
-		then
+		-- Character geometry is intentionally ignored. Pillaring and clutch
+		-- placement put the predicted cell through the placing player's body,
+		-- and other players must not make an otherwise valid cell fail.
+		if containsBlock(blockContainer, position) or not hasAdjacentBlock(blockContainer, position) then
 			return self:reject(player, predictionId)
 		end
 
