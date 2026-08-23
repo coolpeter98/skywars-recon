@@ -79,7 +79,6 @@ local COUNTDOWN_TITLES = {
 	{ Seconds = 2, Text = "2", SoundId = RobloxSound.Countdown.TWO },
 	{ Seconds = 3, Text = "1", SoundId = RobloxSound.Countdown.ONE },
 }
-local GO_TITLE_TEXT = "GO!"
 
 local PregameService = {}
 PregameService.__index = PregameService
@@ -276,7 +275,7 @@ function PregameService.finish(self)
 	if not self.active then
 		return
 	end
-	self:sendTitle(GO_TITLE_TEXT, RobloxSound.Countdown.GO)
+	self:sendTitle("", RobloxSound.Countdown.GO)
 	self.active = false
 	self.generation += 1
 	self:stopContainment()
