@@ -18,8 +18,8 @@ end
 function PartyHandlers.invitePlayer(self, player: Player, invitedPlayer: ReplicatedPlayer, isOffline: boolean)
 	self.context.partyService:invite(player, invitedPlayer, isOffline)
 end
-function PartyHandlers.promotePlayer(self, player: Player, promotedPlayer: Player)
-	self.context.partyService:promote(player, promotedPlayer)
+function PartyHandlers.promotePlayer(self, player: Player, promotedPlayer: ReplicatedPlayer)
+	self.context.partyService:promote(player, promotedPlayer.UserId)
 end
 function PartyHandlers.removePlayer(self, player: Player, userId: number)
 	self.context.partyService:remove(player, userId)
@@ -42,7 +42,7 @@ function PartyHandlers.getRoutes(self)
 		},
 		{
 			Name = "PartyPromote",
-			Validate = Validation.tuple({ Validation.instance("Player") }),
+			Validate = Validation.tuple({ Validation.replicatedPlayer }),
 			Handle = function(player, arguments)
 				self:promotePlayer(player, arguments[1])
 			end,

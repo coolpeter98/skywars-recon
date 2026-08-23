@@ -305,12 +305,14 @@ function PartyService.respond(self, player: Player, inviteId: string, partyId: s
 	self:publish(party)
 end
 
-function PartyService.promote(self, player: Player, promotedPlayer: Player)
+function PartyService.promote(self, player: Player, promotedUserId: number)
 	local party = self.context.playerSessions:require(player).party
+	local promotedPlayer = Players:GetPlayerByUserId(promotedUserId)
 	if
 		party.Id == ""
 		or party.Owner.UserId ~= player.UserId
-		or table.find(party.Players, promotedPlayer.UserId) == nil
+		or promotedPlayer == nil
+		or table.find(party.Players, promotedUserId) == nil
 	then
 		return
 	end
