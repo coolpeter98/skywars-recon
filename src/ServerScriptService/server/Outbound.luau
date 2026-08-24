@@ -1,5 +1,9 @@
 --!strict
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Items = require(ReplicatedStorage.TS.item.item).Items
+
 type PlayerSession = {
 	profile: { [string]: any },
 	party: { [string]: any },
@@ -81,7 +85,10 @@ function Outbound.sendInventory(self, player: Player, inventory: { [string]: any
 	-- strings; the client's RoduxController converts them back with tonumber().
 	local wireContents = {}
 	for slot, item in inventory.Contents do
-		wireContents[tostring(slot)] = item
+		local itemDefinition = Items[item.Type]
+		if itemDefinition == nil or itemDefinition.Currency == nil then
+			wireContents[tostring(slot)] = item
+		end
 	end
 	self:setValue(player, "Inventory", {
 		Size = inventory.Size,

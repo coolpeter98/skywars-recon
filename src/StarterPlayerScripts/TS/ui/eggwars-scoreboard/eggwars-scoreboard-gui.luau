@@ -58,11 +58,10 @@ return {
 				["Color"] = team.Color,
 				["AliveCount"] = team.AliveCount,
 			}
-			local canRespawn = team.CanRespawn
-			if canRespawn then
-				canRespawn = team.AliveCount > 0
-			end
-			teamProps.HasEgg = canRespawn
+			-- CanRespawn is the authoritative replicated egg state. AliveCount is
+			-- independent (and can be zero in a partial/local round), so folding it
+			-- into HasEgg makes the scoreboard disagree with the island keypoint.
+			teamProps.HasEgg = team.CanRespawn
 			return React.createElement(EggwarsTeamGui, teamProps)
 		end
 

@@ -132,6 +132,7 @@ type CombatContext = {
 	powerUpService: any,
 	regenerationService: any,
 	killLog: any,
+	eggWarsService: any?,
 }
 
 local CombatService = {}
@@ -473,6 +474,10 @@ function CombatService:dealDamage(
 	if getPlayerRoot(target) == nil then
 		return
 	end
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		damage = eggWarsService:modifyOutgoingDamage(attacker, damage)
+	end
 
 	-- Combat tagging: every validated hit marks the attacker (including
 	-- zero-damage knockback like Snowball) so Fall/Void eliminations can
@@ -550,6 +555,9 @@ function CombatService:dealDamage(
 			Attribute.Health,
 			math.min(HealthConstants.MAX_HEALTH, getHealth(attacker) + LIFESTEAL_HEAL_PER_HIT)
 		)
+	end
+	if eggWarsService ~= nil then
+		eggWarsService:onDamageDealt(attacker, damageToHealth)
 	end
 
 	-- The number the client shows: health damage when any got through,
@@ -646,8 +654,13 @@ function CombatService:meleeStrikeEntity(player: Player, entity: Model)
 	if attackerRoot == nil or damage == nil then
 		return
 	end
-	local isCombatEntity = CollectionService:HasTag(entity, "entity") or CollectionService:HasTag(entity, "egg")
+	local isEgg = CollectionService:HasTag(entity, "egg")
+	local isCombatEntity = CollectionService:HasTag(entity, "entity") or isEgg
 	if not isCombatEntity or entity.Parent == nil then
+		return
+	end
+	local eggWarsService = self.context.eggWarsService
+	if isEgg and (eggWarsService == nil or not eggWarsService:canDamageEgg(player, entity)) then
 		return
 	end
 	local entityHealth = entity:GetAttribute(Attribute.Health)
@@ -660,11 +673,35 @@ function CombatService:meleeStrikeEntity(player: Player, entity: Model)
 	end
 	self:setCooldown(player, DAMAGE_TYPE_MELEE, HealthConstants.DAMAGE_COOLDOWN)
 
-	local newHealth = math.max(0, entityHealth - math.max(1, math.floor(damage + 0.5)))
+	if eggWarsService ~= nil then
+		damage = eggWarsService:modifyOutgoingDamage(player, damage)
+	end
+	local dealtDamage = math.max(1, math.floor(damage + 0.5))
+	local newHealth = math.max(0, entityHealth - dealtDamage)
 	entity:SetAttribute(Attribute.Health, newHealth)
+	self.context.outbound:fireAll(
+		"DamageDealt",
+		entity,
+		math.min(entityHealth, dealtDamage),
+		newHealth,
+		DAMAGE_TYPE_MELEE,
+		false,
+		player
+	)
+	if isEgg and eggWarsService ~= nil then
+		eggWarsService:onEggDamaged(entity)
+	end
 	if newHealth <= 0 then
 		local entityName = entity.Name
-		self.context.outbound:fireAll("EggEliminated", entityName, player)
+		if isEgg and eggWarsService ~= nil then
+			local eggTeamId = entity:GetAttribute(Attribute.TeamId)
+			if type(eggTeamId) == "string" then
+				entityName = eggTeamId
+			end
+			eggWarsService:onEggEliminated(entity, player)
+		else
+			self.context.outbound:fireAll("EggEliminated", entityName, player)
+		end
 		local killLog = self.context.killLog
 		if killLog ~= nil then
 			local weapon: string? = nil
@@ -697,7 +734,9 @@ function CombatService:meleeStrikeEntity(player: Player, entity: Model)
 				MapName = mapName,
 			})
 		end
-		entity:Destroy()
+		if not isEgg then
+			entity:Destroy()
+		end
 	end
 end
 

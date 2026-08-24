@@ -1,8 +1,9 @@
 --!strict
 
 local SkyWarsMode = require(script.Parent.SkyWarsMode)
+local EggWarsMode = require(script.Parent.EggWarsMode)
 
-local adapters = { SkyWarsMode }
+local adapters = { SkyWarsMode, EggWarsMode }
 
 local ModeRegistry = {}
 

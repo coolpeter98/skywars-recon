@@ -21,7 +21,12 @@ end
 function EconomyHandlers.shopPurchaseUpgrade(self, player: Player, shopType: string, itemIndex: number)
 	self.context.inventoryService:purchaseUpgrade(player, shopType, itemIndex)
 end
-function EconomyHandlers.shopPurchaseTeamUpgrade(self, player: Player, shopType: string, itemIndex: number) end
+function EconomyHandlers.shopPurchaseTeamUpgrade(self, player: Player, shopType: string, itemIndex: number)
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		eggWarsService:purchaseTeamUpgrade(player, shopType, itemIndex)
+	end
+end
 
 function EconomyHandlers.getRoutes(self)
 	local shopArguments = {

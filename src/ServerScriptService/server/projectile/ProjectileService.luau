@@ -385,8 +385,9 @@ end
 -- The recovered ExplosionRadius is in block units (3 → roughly six blocks
 -- side-to-side); the block world re-culls the carved faces through the same
 -- split/re-cull path pickaxe mining uses. Player-placed blocks are carved
--- like map blocks, and nothing is granted to the shooter — explosions
--- destroy, they do not gather.
+-- like map blocks, and nothing is granted to the shooter. BlockWorldService
+-- preserves authored Egg Wars terrain while still allowing placed defence
+-- blocks to be destroyed.
 local function breakBlocks(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
 	local blockWorldService = self.context.blockWorldService
 	local explosionRadius = projectile.data.ExplosionRadius

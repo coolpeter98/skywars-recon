@@ -218,6 +218,7 @@ function BlockPlacementService.placeBlock(
 	rotation: number,
 	predictionId: string
 ): boolean
+	print("sigeon")
 	local prediction = self:getPrediction(player, predictionId)
 	if prediction == nil then
 		return false
@@ -225,6 +226,14 @@ function BlockPlacementService.placeBlock(
 	local root = getPlayerRoot(player)
 	local normalizedRotation = normalizeRotation(rotation)
 	local itemDefinition, resolvedItemType = resolveBlockItem(player, prediction.itemType)
+		print(root == nil,
+		 player:GetAttribute(Attribute.Spectating) == true,
+		 not self:isPlacementAllowedForServer(player, position),
+		 (root.Position - position).Magnitude >= MAXIMUM_PLACE_DISTANCE,
+		 not isGridAligned(position),
+		 normalizedRotation == nil,
+		 itemDefinition == nil,
+		 resolvedItemType == nil)
 	if
 		root == nil
 		or player:GetAttribute(Attribute.Spectating) == true

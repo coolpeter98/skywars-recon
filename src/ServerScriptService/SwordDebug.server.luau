@@ -3,8 +3,10 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local MELEE_STRIKE_ID = "bf26abfd-c509-43b4-9b49-5ae3a5521cd4"
-local START_PRIVATE_MATCH_ID = "d887b207-66e8-4bf5-9cf8-f4b83ceefa37"
+local EventIds = require(ReplicatedStorage.TS.event["event-ids"]).EventIds
+
+local MELEE_STRIKE_ID = EventIds.MeleeStrike
+local START_PRIVATE_MATCH_ID = EventIds.StartPrivateMatch
 local MAX_MELEE_RANGE = 15
 local LOS_MARGIN = 1.5
 

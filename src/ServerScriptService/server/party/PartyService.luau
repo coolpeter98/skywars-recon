@@ -52,9 +52,9 @@ function PartyService.new(context)
 	}, PartyService)
 end
 
-function PartyService.notify(self, player: Player, message: string)
-	self.context.outbound:fire("Alert", player, "Party", message, Color3.fromRGB(255, 205, 76), 3)
-end
+-- Party request rejections are silent; the original server does not emit the
+-- client's global Alert event for party actions.
+function PartyService.notify(_: any, _: Player, _: string) end
 
 function PartyService.publish(self, party)
 	for _, userId in party.Players do

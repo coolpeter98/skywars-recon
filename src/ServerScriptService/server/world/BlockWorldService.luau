@@ -32,6 +32,8 @@
 -- block) and replicated back through BlockBreakProgress (crack overlay),
 -- BlockBreakStatusCleared, and BlockRemoved. When a block breaks, the mined
 -- item is granted to the miner's inventory (explosions grant nothing).
+-- Egg Wars is the mode exception: its authored arena cells are immutable to
+-- both paths, while player-placed defence blocks remain breakable.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -223,6 +225,15 @@ function BlockWorldService.new(context)
 	}, BlockWorldService)
 end
 
+-- Egg Wars preserves the authored arena exactly. Blocks placed during the
+-- round carry PlacedByUserId and remain normal, breakable defence blocks.
+function BlockWorldService.isImmutableMapEntry(self, entry: VoxelEntry): boolean
+	local eggWarsService = self.context.eggWarsService
+	return eggWarsService ~= nil
+		and eggWarsService:protectsMapGeometry()
+		and entry.part:GetAttribute(Attribute.PlacedByUserId) == nil
+end
+
 function BlockWorldService.start(self)
 	if self.heartbeat ~= nil then
 		return
@@ -364,6 +375,9 @@ function BlockWorldService.canBreak(self, player: Player, position: Vector3): bo
 	if entry == nil or entry.part.Parent == nil then
 		return false
 	end
+	if self:isImmutableMapEntry(entry) then
+		return false
+	end
 	if player:GetAttribute(Attribute.Alive) ~= true or player:GetAttribute(Attribute.Spectating) == true then
 		return false
 	end
@@ -503,7 +517,12 @@ function BlockWorldService.removeBlocks(self, removedPositions: { Vector3 }): nu
 	for _, position in removedPositions do
 		local key = keyForPosition(position)
 		local entry = self.cells[key]
-		if entry ~= nil and entry.part.Parent ~= nil and removedKeys[key] == nil then
+		if
+			entry ~= nil
+			and entry.part.Parent ~= nil
+			and not self:isImmutableMapEntry(entry)
+			and removedKeys[key] == nil
+		then
 			removedKeys[key] = position
 			local affectedIndex = affectedIndexByPart[entry.part]
 			if affectedIndex == nil then

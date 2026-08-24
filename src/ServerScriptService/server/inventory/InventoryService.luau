@@ -4,6 +4,7 @@ local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local ItemModule = require(ReplicatedStorage.TS.item.item)
@@ -50,14 +51,29 @@ type ChestState = {
 	Opened: boolean?,
 }
 
+export type WorldDropOptions = {
+	GeneratorDrop: boolean?,
+	InitialVelocity: Vector3?,
+	OwnerUserId: number?,
+	PickupDelay: number?,
+	StackKey: string?,
+}
+
 local CHEST_SIZE = 18
 local HOTBAR_SIZE = 8
 local MAX_ITEM_QUANTITY = 1_000_000
 local MAX_PREDICTION_ID_LENGTH = 128
 local PREDICTION_TIMEOUT = 3
 local DROP_PICKUP_DELAY = 1
-local DROP_PICKUP_RANGE = 10
+-- Live-server measurement supplied for this reconstruction.
+local DROP_PICKUP_RANGE = 5
+local DROP_PICKUP_SCAN_INTERVAL = 0.1
 local CHEST_INTERACTION_RANGE = 14
+
+local CURRENCY_TYPE_BY_ITEM: { [string]: string } = {}
+for currencyType, currency in Currencies do
+	CURRENCY_TYPE_BY_ITEM[currency.ItemType] = currencyType
+end
 
 local InventoryService = {}
 InventoryService.__index = InventoryService
@@ -325,6 +341,20 @@ local function getPlayerRoot(player: Player): BasePart?
 	return if root and root:IsA("BasePart") then root else nil
 end
 
+local function getDropFolder(): Folder
+	local dropFolder = Workspace:FindFirstChild("ItemDrops")
+	if dropFolder ~= nil and dropFolder:IsA("Folder") then
+		return dropFolder
+	end
+	if dropFolder ~= nil then
+		dropFolder:Destroy()
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "ItemDrops"
+	folder.Parent = Workspace
+	return folder
+end
+
 function InventoryService.new(context)
 	return setmetatable({
 		context = context,
@@ -332,22 +362,37 @@ function InventoryService.new(context)
 		connections = {} :: { RBXScriptConnection },
 		characterConnections = {} :: { [Player]: RBXScriptConnection },
 		dropConnections = {} :: { [Model]: RBXScriptConnection },
+		dropPickupScanElapsed = 0,
 		started = false,
 	}, InventoryService)
 end
 
-function InventoryService.notify(self, player: Player, message: string)
-	self.context.outbound:fire("Alert", player, "", message, Color3.fromRGB(255, 92, 92), 2.5)
+-- Rejected inventory/shop actions are silent. The original server does not
+-- use the client's global Alert surface for these validation failures.
+function InventoryService.notify(_: any, _: Player, _: string) end
+
+function InventoryService.playPickupSound(self, player: Player)
+	self.context.outbound:fire(
+		"SoundPlayed",
+		player,
+		HttpService:GenerateGUID(false),
+		RobloxSound.Inventory.PICKUP_ITEM,
+		nil,
+		{ Volume = 0.8 }
+	)
+end
+
+function InventoryService.playShopSound(self, player: Player, soundId: string)
+	self.context.outbound:fire("SoundPlayed", player, HttpService:GenerateGUID(false), soundId, nil, { Volume = 0.9 })
 end
 
 function InventoryService.refreshCurrency(self, player: Player, shouldReplicate: boolean?)
 	local session = self.context.playerSessions:require(player)
-	local quantities: { [string]: number } = {}
-	for currencyType, currency in Currencies do
-		local item = findItem(session.inventory, currency.ItemType)
-		quantities[currencyType] = if item then item.Quantity else 0
+	for currencyType in Currencies do
+		if type(session.gameCurrency.Quantities[currencyType]) ~= "number" then
+			session.gameCurrency.Quantities[currencyType] = 0
+		end
 	end
-	session.gameCurrency = { Quantities = quantities }
 	if shouldReplicate then
 		self.context.outbound:sendGameCurrency(player, session.gameCurrency)
 	end
@@ -366,15 +411,19 @@ function InventoryService.replicateItemChange(
 	if quantity == 0 then
 		return
 	end
-	self.context.outbound:fire("InventoryUpdated", player, itemType, quantity, predictionId)
-	local itemDefinition: ItemDefinition? = Items[itemType]
-	if itemDefinition ~= nil and itemDefinition.Currency ~= nil then
+	if CURRENCY_TYPE_BY_ITEM[itemType] ~= nil then
 		self:refreshCurrency(player, true)
+		return
 	end
+	self.context.outbound:fire("InventoryUpdated", player, itemType, quantity, predictionId)
 end
 
 function InventoryService.getItemQuantity(self, player: Player, itemType: string): number
 	local session = self.context.playerSessions:require(player)
+	local currencyType = CURRENCY_TYPE_BY_ITEM[itemType]
+	if currencyType ~= nil then
+		return session.gameCurrency.Quantities[currencyType] or 0
+	end
 	local item = findItem(session.inventory, itemType)
 	return if item then item.Quantity else 0
 end
@@ -390,6 +439,17 @@ function InventoryService.changeItem(
 		return false
 	end
 	local session = self.context.playerSessions:require(player)
+	local currencyType = CURRENCY_TYPE_BY_ITEM[itemType]
+	if currencyType ~= nil then
+		local currentQuantity = session.gameCurrency.Quantities[currencyType] or 0
+		local newQuantity = currentQuantity + quantity
+		if newQuantity < 0 or newQuantity > MAX_ITEM_QUANTITY then
+			return false
+		end
+		session.gameCurrency.Quantities[currencyType] = newQuantity
+		self:replicateItemChange(player, itemType, quantity, predictionId)
+		return true
+	end
 	if quantity < 0 and self:getItemQuantity(player, itemType) < -quantity then
 		return false
 	end
@@ -408,6 +468,9 @@ end
 function InventoryService.clear(self, player: Player)
 	local session = self.context.playerSessions:require(player)
 	table.clear(session.inventory.Contents)
+	for currencyType in Currencies do
+		session.gameCurrency.Quantities[currencyType] = 0
+	end
 	table.clear(session.pendingInventoryPredictions)
 	self:setHeldItem(player, nil)
 	for armourType in session.equippedArmour do
@@ -543,10 +606,33 @@ function InventoryService.unequipArmour(self, player: Player, itemType: string):
 	return true
 end
 
-function InventoryService.createDrop(self, player: Player, itemType: string, quantity: number): Model?
-	local root = getPlayerRoot(player)
-	if root == nil then
+function InventoryService.createWorldDrop(
+	self,
+	itemType: string,
+	quantity: number,
+	cframe: CFrame,
+	options: WorldDropOptions?
+): Model?
+	if Items[itemType] == nil or quantity <= 0 or quantity % 1 ~= 0 or quantity > MAX_ITEM_QUANTITY then
 		return nil
+	end
+	options = options or {}
+	local dropFolder = getDropFolder()
+	local stackKey = options.StackKey
+	if stackKey ~= nil then
+		for _, candidate in dropFolder:GetChildren() do
+			if
+				candidate:IsA("Model")
+				and candidate:GetAttribute("StackKey") == stackKey
+				and candidate:GetAttribute("PickupInProgress") ~= true
+			then
+				local currentQuantity = candidate:GetAttribute("Quantity")
+				if type(currentQuantity) == "number" and currentQuantity + quantity <= MAX_ITEM_QUANTITY then
+					candidate:SetAttribute("Quantity", currentQuantity + quantity)
+					return candidate
+				end
+			end
+		end
 	end
 	local success, drop = pcall(function()
 		return ItemDropUtil.createItemDropModel(itemType)
@@ -555,29 +641,70 @@ function InventoryService.createDrop(self, player: Player, itemType: string, qua
 		warn(("[Server] Failed to create item drop %s: %s"):format(itemType, tostring(drop)))
 		return nil
 	end
+	-- The invisible primary hitbox is the drop's physical body: it must collide
+	-- with the arena so unanchored loot settles on the floor. Render descendants
+	-- stay non-solid, and CanTouch remains enabled for the immediate pickup path.
+	for _, descendant in drop:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.CanCollide = descendant == drop.PrimaryPart
+			descendant.CanQuery = false
+		end
+	end
 	drop:SetAttribute("ItemType", itemType)
 	drop:SetAttribute("Quantity", quantity)
-	drop:SetAttribute("OwnerUserId", player.UserId)
-	drop:SetAttribute("PickupAt", Workspace:GetServerTimeNow() + DROP_PICKUP_DELAY)
-	drop:PivotTo(CFrame.new(root.Position + root.CFrame.LookVector * 4 + Vector3.new(0, 2, 0)))
-	local dropFolder = Workspace:FindFirstChild("ItemDrops")
-	if dropFolder == nil then
-		dropFolder = Instance.new("Folder")
-		dropFolder.Name = "ItemDrops"
-		dropFolder.Parent = Workspace
+	if options.OwnerUserId ~= nil then
+		drop:SetAttribute("OwnerUserId", options.OwnerUserId)
 	end
+	if options.GeneratorDrop == true then
+		drop:SetAttribute("GeneratorDrop", true)
+	end
+	if stackKey ~= nil then
+		drop:SetAttribute("StackKey", stackKey)
+	end
+	drop:SetAttribute("PickupAt", Workspace:GetServerTimeNow() + (options.PickupDelay or 0))
+	drop:PivotTo(cframe)
 	drop.Parent = dropFolder
 	self:bindDrop(drop)
-	if drop.PrimaryPart then
-		drop.PrimaryPart.AssemblyLinearVelocity = root.CFrame.LookVector * 18 + Vector3.new(0, 8, 0)
+	if drop.PrimaryPart ~= nil and options.InitialVelocity ~= nil then
+		drop.PrimaryPart.AssemblyLinearVelocity = options.InitialVelocity
 	end
 	return drop
 end
 
+function InventoryService.createDrop(self, player: Player, itemType: string, quantity: number): Model?
+	local root = getPlayerRoot(player)
+	if root == nil then
+		return nil
+	end
+	return self:createWorldDrop(
+		itemType,
+		quantity,
+		CFrame.new(root.Position + root.CFrame.LookVector * 4 + Vector3.new(0, 2, 0)),
+		{
+			OwnerUserId = player.UserId,
+			PickupDelay = DROP_PICKUP_DELAY,
+			InitialVelocity = root.CFrame.LookVector * 18 + Vector3.new(0, 8, 0),
+		}
+	)
+end
+
 function InventoryService.dropHeldItem(self, player: Player): boolean
+	local eggWarsService = self.context.eggWarsService
+	local runtimeContext = self.context.runtimeContext:get()
+	-- Egg Wars disables manual item dropping for the whole match lifecycle,
+	-- including its pregame and cage phases. Generator-created world drops are
+	-- separate and continue to use createWorldDrop directly.
+	if eggWarsService ~= nil and eggWarsService:isGameMode(runtimeContext.GameMode) then
+		return false
+	end
 	local session = self.context.playerSessions:require(player)
 	local itemType = session.heldItemType
 	if itemType == nil then
+		return false
+	end
+	local itemDefinition: ItemDefinition? = Items[itemType]
+	-- Tiered tools retain their normal non-droppable rule in other modes.
+	if itemDefinition == nil or itemDefinition.Melee ~= nil or itemDefinition.Pickaxe ~= nil then
 		return false
 	end
 	local quantity = self:getItemQuantity(player, itemType)
@@ -595,13 +722,16 @@ function InventoryService.dropHeldItem(self, player: Player): boolean
 	return true
 end
 
-function InventoryService.tryPickupDrop(self, drop: Model, hit: BasePart)
+function InventoryService.tryPickupDropForPlayer(self, drop: Model, player: Player)
 	if drop.Parent == nil or drop:GetAttribute("PickupInProgress") == true then
 		return
 	end
-	local character = hit:FindFirstAncestorOfClass("Model")
-	local player = character and Players:GetPlayerFromCharacter(character)
-	if player == nil or self.context.playerSessions:get(player) == nil then
+	if
+		player.Parent ~= Players
+		or self.context.playerSessions:get(player) == nil
+		or player:GetAttribute("Alive") ~= true
+		or player:GetAttribute("Spectating") == true
+	then
 		return
 	end
 	local pickupAt = drop:GetAttribute("PickupAt")
@@ -621,14 +751,61 @@ function InventoryService.tryPickupDrop(self, drop: Model, hit: BasePart)
 	local itemType = if type(itemTypeAttribute) == "string" then itemTypeAttribute else drop.Name
 	local quantityAttribute = drop:GetAttribute("Quantity")
 	local quantity = if type(quantityAttribute) == "number" and quantityAttribute % 1 == 0 then quantityAttribute else 1
+	if
+		drop:GetAttribute("GeneratorDrop") == true
+		and (self.context.eggWarsService == nil or not self.context.eggWarsService:isActive())
+	then
+		return
+	end
+	if drop:GetAttribute("GeneratorDrop") == true then
+		quantity *= self.context.eggWarsService:getGeneratorLootMultiplier(player)
+	end
 	if Items[itemType] == nil or quantity <= 0 or quantity > MAX_ITEM_QUANTITY then
 		return
 	end
 	drop:SetAttribute("PickupInProgress", true)
 	if self:changeItem(player, itemType, quantity) then
+		self:playPickupSound(player)
 		drop:Destroy()
 	else
 		drop:SetAttribute("PickupInProgress", nil)
+	end
+end
+
+function InventoryService.tryPickupDrop(self, drop: Model, hit: BasePart)
+	local character = hit:FindFirstAncestorOfClass("Model")
+	local player = character and Players:GetPlayerFromCharacter(character)
+	if player ~= nil then
+		self:tryPickupDropForPlayer(drop, player)
+	end
+end
+
+function InventoryService.scanDropPickups(self)
+	for drop in self.dropConnections do
+		local primaryPart = drop.PrimaryPart
+		if drop.Parent ~= nil and primaryPart ~= nil and drop:GetAttribute("PickupInProgress") ~= true then
+			local nearbyPlayers = {} :: { { Player: Player, Distance: number } }
+			for _, player in Players:GetPlayers() do
+				local root = getPlayerRoot(player)
+				if root ~= nil then
+					local distance = (root.Position - primaryPart.Position).Magnitude
+					if distance <= DROP_PICKUP_RANGE then
+						table.insert(nearbyPlayers, { Player = player, Distance = distance })
+					end
+				end
+			end
+			table.sort(nearbyPlayers, function(left, right)
+				return if left.Distance == right.Distance
+					then left.Player.UserId < right.Player.UserId
+					else left.Distance < right.Distance
+			end)
+			for _, entry in nearbyPlayers do
+				self:tryPickupDropForPlayer(drop, entry.Player)
+				if drop.Parent == nil or drop:GetAttribute("PickupInProgress") == true then
+					break
+				end
+			end
+		end
 	end
 end
 
@@ -989,17 +1166,17 @@ function InventoryService.purchaseItem(self, player: Player, shopType: string, i
 	end
 
 	local session = self.context.playerSessions:require(player)
-	local updatedInventory = updateInventoryBasic(session.inventory, currencyItemType, -shopItem.Price)
-	if updatedInventory ~= nil then
-		updatedInventory = updatePlayerInventory(updatedInventory, shopItem.ItemType, shopItem.Quantity)
-	end
+	local updatedInventory = updatePlayerInventory(session.inventory, shopItem.ItemType, shopItem.Quantity)
 	if updatedInventory == nil then
 		self:notify(player, "Your inventory is full.")
 		return false
 	end
 	session.inventory = updatedInventory
-	self:replicateItemChange(player, currencyItemType, -shopItem.Price)
+	if not self:changeItem(player, currencyItemType, -shopItem.Price) then
+		return false
+	end
 	self:replicateItemChange(player, shopItem.ItemType, shopItem.Quantity)
+	self:playShopSound(player, RobloxSound.EggUi.PURCHASE)
 	return true
 end
 
@@ -1037,10 +1214,7 @@ function InventoryService.purchaseUpgrade(self, player: Player, shopType: string
 		return false
 	end
 
-	local updatedInventory = updateInventoryBasic(session.inventory, currencyItemType, -target.Price)
-	if updatedInventory == nil then
-		return false
-	end
+	local updatedInventory = cloneInventory(session.inventory)
 	local replacedItemType: string?
 	local replacedItemQuantity = 0
 	if upgrade.Id == "Armour" then
@@ -1070,6 +1244,9 @@ function InventoryService.purchaseUpgrade(self, player: Player, shopType: string
 	end
 
 	session.inventory = updatedInventory
+	if not self:changeItem(player, currencyItemType, -target.Price) then
+		return false
+	end
 	if upgrade.Id == "Armour" then
 		for _, armourItemType in target.ArmourTypes do
 			local armourDefinition: ItemDefinition = Items[armourItemType]
@@ -1078,13 +1255,13 @@ function InventoryService.purchaseUpgrade(self, player: Player, shopType: string
 			self:applyArmourVisual(player, armourType, armourItemType)
 		end
 	end
-	self:replicateItemChange(player, currencyItemType, -target.Price)
 	if replacedItemType ~= nil then
 		self:replicateItemChange(player, replacedItemType, -replacedItemQuantity)
 	end
 	if upgrade.Id ~= "Armour" then
 		self:replicateItemChange(player, target.ItemType, target.Quantity)
 	end
+	self:playShopSound(player, RobloxSound.EggUi.UPGRADE)
 	return true
 end
 
@@ -1135,6 +1312,17 @@ function InventoryService.start(self)
 			self:bindDrop(instance)
 		end)
 	)
+	table.insert(
+		self.connections,
+		RunService.Heartbeat:Connect(function(deltaTime)
+			self.dropPickupScanElapsed += deltaTime
+			if self.dropPickupScanElapsed < DROP_PICKUP_SCAN_INTERVAL then
+				return
+			end
+			self.dropPickupScanElapsed = 0
+			self:scanDropPickups()
+		end)
+	)
 	for _, player in Players:GetPlayers() do
 		self:bindPlayer(player)
 	end
@@ -1157,6 +1345,7 @@ function InventoryService.stop(self)
 	table.clear(self.characterConnections)
 	table.clear(self.dropConnections)
 	table.clear(self.chests)
+	self.dropPickupScanElapsed = 0
 	self.started = false
 end
 

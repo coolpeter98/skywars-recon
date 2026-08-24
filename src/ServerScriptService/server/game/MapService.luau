@@ -2,8 +2,10 @@
 -- MapService — builds and owns the active arena for any game round.
 --
 -- Primary path: imported maps. A map is a Model under
--- ServerStorage.Maps.SkyWars.<MapName> (the original game's convention, read
--- by ReplicatedStorage.TS.game.map["map-info"]) with this layout:
+-- ServerStorage.Maps.<GameType>.<MapName> (the original game's convention,
+-- read by ReplicatedStorage.TS.game.map["map-info"]). The tree below is the
+-- SkyWars layout; WorldData-driven adapters such as Egg Wars provide their
+-- own spawn reader and defer their empty runtime-folder population.
 --
 --	<MapName> (Model)
 --	├── WorldData (Folder)
@@ -30,10 +32,10 @@
 -- Random selects one of the valid imported maps. The per-mode placeholder is
 -- only a recovery path when no valid imported map can be loaded.
 --
--- Either way the arena is cloned into Workspace.BlockContainer, named after
--- the selected map (placeholders are named "Placeholder"), as a sibling of
--- player-placed blocks (the client's block raycast whitelists exactly
--- Workspace.BlockContainer).
+-- Imported arenas are cloned as Workspace.BlockContainer.Map and retain the
+-- selected catalog id in their SelectedMapName attribute. Placeholders keep
+-- the name "Placeholder". Both are siblings of player-placed blocks because
+-- the client's block raycast whitelists exactly Workspace.BlockContainer.
 
 local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
@@ -353,7 +355,10 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	end
 
 	local map = mapAsset:Clone()
-	map.Name = mapName
+	-- The live server always exposes the active imported arena at
+	-- Workspace.BlockContainer.Map. Preserve the catalog id separately for
+	-- settings, diagnostics, and round logs.
+	map.Name = "Map"
 	map:SetAttribute("SelectedMapName", mapName)
 	map:SetAttribute("Placeholder", false)
 
@@ -364,58 +369,73 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	-- the client's three-stud grid and moved every arena above the lobby.
 	map.Parent = blockContainer
 
-	-- Read team spawns from the numbered SpawnLocations (spawn index 1..N maps
-	-- to team ordinal 1..N; fewer teams spread evenly around the map), then
-	-- remove the parts so Roblox's default spawn logic cannot place characters
-	-- on them mid-round.
+	-- Most modes read numbered SpawnLocations. WorldData-driven modes can
+	-- provide their own reader; Egg Wars does this because its empty runtime
+	-- folder is populated only when players move from the lobby into cages.
 	local teamIds = adapter.getTeamIds(gameMode)
 	local spawnPositions: { [string]: CFrame } = {}
-	local spawnLocationsFolder = map:FindFirstChild("SpawnLocations")
-	if spawnLocationsFolder == nil or not spawnLocationsFolder:IsA("Folder") then
-		warn(("[MapService] map %q has no SpawnLocations folder"):format(mapName))
-		map:Destroy()
-		return nil
-	end
-	local spawnsByIndex: { [number]: SpawnLocation } = {}
-	local spawnCount = 0
-	for _, spawnLocation in spawnLocationsFolder:GetChildren() do
-		if spawnLocation:IsA("SpawnLocation") then
-			local spawnIndex = tonumber(spawnLocation.Name)
-			if spawnIndex ~= nil and spawnIndex >= 1 and spawnIndex % 1 == 0 then
-				spawnsByIndex[spawnIndex] = spawnLocation
-				spawnCount = math.max(spawnCount, spawnIndex)
-			end
-		end
-	end
-	if spawnCount < #teamIds then
-		warn(
-			("[MapService] map %q has %d spawns but mode %s needs %d teams"):format(
-				mapName,
-				spawnCount,
-				gameMode,
-				#teamIds
-			)
-		)
-		map:Destroy()
-		return nil
-	end
-	for ordinal, teamId in teamIds do
-		local spawnIndex = math.floor(1 + ((ordinal - 1) * spawnCount) / #teamIds + 0.5)
-		local spawnLocation = spawnsByIndex[spawnIndex]
-		if spawnLocation == nil then
-			warn(("[MapService] map %q is missing spawn location %d"):format(mapName, spawnIndex))
+	local importedSpawnReader = adapter.getImportedSpawnPositions
+	local usesDeferredWorldPopulation = type(importedSpawnReader) == "function"
+	if usesDeferredWorldPopulation then
+		local importedSpawnPositions = importedSpawnReader(map)
+		if importedSpawnPositions == nil then
+			warn(("[MapService] map %q has invalid WorldData game spawns"):format(mapName))
 			map:Destroy()
 			return nil
 		end
-		spawnPositions[teamId] = spawnLocation.CFrame
+		spawnPositions = importedSpawnPositions
+	else
+		local spawnLocationsFolder = map:FindFirstChild("SpawnLocations")
+		if spawnLocationsFolder == nil or not spawnLocationsFolder:IsA("Folder") then
+			warn(("[MapService] map %q has no SpawnLocations folder"):format(mapName))
+			map:Destroy()
+			return nil
+		end
+		local spawnsByIndex: { [number]: SpawnLocation } = {}
+		local spawnCount = 0
+		for _, spawnLocation in spawnLocationsFolder:GetChildren() do
+			if spawnLocation:IsA("SpawnLocation") then
+				local spawnIndex = tonumber(spawnLocation.Name)
+				if spawnIndex ~= nil and spawnIndex >= 1 and spawnIndex % 1 == 0 then
+					spawnsByIndex[spawnIndex] = spawnLocation
+					spawnCount = math.max(spawnCount, spawnIndex)
+				end
+			end
+		end
+		if spawnCount < #teamIds then
+			warn(
+				("[MapService] map %q has %d spawns but mode %s needs %d teams"):format(
+					mapName,
+					spawnCount,
+					gameMode,
+					#teamIds
+				)
+			)
+			map:Destroy()
+			return nil
+		end
+		for ordinal, teamId in teamIds do
+			local spawnIndex = math.floor(1 + ((ordinal - 1) * spawnCount) / #teamIds + 0.5)
+			local spawnLocation = spawnsByIndex[spawnIndex]
+			if spawnLocation == nil then
+				warn(("[MapService] map %q is missing spawn location %d"):format(mapName, spawnIndex))
+				map:Destroy()
+				return nil
+			end
+			spawnPositions[teamId] = spawnLocation.CFrame
+		end
+		spawnLocationsFolder:Destroy()
 	end
-	spawnLocationsFolder:Destroy()
 
 	-- The top-level anchor SpawnLocation mirrors WorldData.Spawn; it must not
-	-- act as a fallback spawn for unassigned characters.
-	for _, child in map:GetChildren() do
-		if child:IsA("SpawnLocation") and child.Name == "SpawnLocation" then
-			child:Destroy()
+	-- act as a default Roblox spawn after the map has been consumed. Egg Wars
+	-- keeps it until deferred population so its authored runtime shape matches
+	-- the recovered server snapshot during the pre-game lobby.
+	if not usesDeferredWorldPopulation then
+		for _, child in map:GetChildren() do
+			if child:IsA("SpawnLocation") and child.Name == "SpawnLocation" then
+				child:Destroy()
+			end
 		end
 	end
 
@@ -423,12 +443,14 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	-- rig (the client's chest component requires one) and their baked
 	-- ProximityPrompts would dead-end. Fresh prefab chests are spawned below
 	-- at the WorldData.Chest.Tier CFrameValues instead.
-	local chestsFolder = map:FindFirstChild("Chests")
-	if chestsFolder ~= nil then
-		chestsFolder:Destroy()
-	end
 	local worldData = map:FindFirstChild("WorldData")
-	if worldData ~= nil then
+	if not usesDeferredWorldPopulation then
+		local chestsFolder = map:FindFirstChild("Chests")
+		if chestsFolder ~= nil then
+			chestsFolder:Destroy()
+		end
+	end
+	if worldData ~= nil and not usesDeferredWorldPopulation then
 		local chestFolder = worldData:FindFirstChild("Chest")
 		local tierFolder = chestFolder and chestFolder:FindFirstChild("Tier")
 		if tierFolder ~= nil and tierFolder:IsA("Folder") then

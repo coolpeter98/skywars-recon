@@ -22,10 +22,15 @@ export type RoundSession = {
 	OnFinished: (({ Player }) -> ())?,
 }
 
+type RespawningPlayer = {
+	RoundId: number,
+	TeamId: string,
+}
+
 local RoundService = {}
 RoundService.__index = RoundService
 
-local REPLICATION_RETRY_DELAYS = { 0.5, 1, 2, 4 }
+local REPLICATION_RETRY_DELAYS = { 0.5, 1, 2, 4, 8, 16 }
 
 local function countDictionary(dictionary: { [string]: any }): number
 	local count = 0
@@ -58,6 +63,7 @@ function RoundService.new(context)
 		humanoidConnections = {} :: { [Player]: RBXScriptConnection },
 		initializedPlayers = {} :: { [Player]: boolean },
 		eliminatedPlayers = {} :: { Player },
+		respawningPlayers = {} :: { [Player]: RespawningPlayer },
 		roundId = 0,
 		roundState = "Pregame",
 		gameStateChangeTime = os.time(),
@@ -172,10 +178,17 @@ function RoundService.buildGameTeams(self): { [string]: any }
 		for _, candidate in Players:GetPlayers() do
 			local teamId = candidate:GetAttribute("TeamId")
 			local team = if type(teamId) == "string" then gameTeams[teamId] else nil
-			if team ~= nil and candidate:GetAttribute("Alive") == true then
+			if
+				team ~= nil
+				and (candidate:GetAttribute("Alive") == true or self.respawningPlayers[candidate] ~= nil)
+			then
 				team.AliveCount += 1
 			end
 		end
+	end
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		eggWarsService:applyGameTeams(gameTeams)
 	end
 	return gameTeams
 end
@@ -187,20 +200,38 @@ function RoundService.replicatePlayer(self, player: Player)
 	if session == nil or adapter == nil or modeSession == nil or player.Parent ~= Players then
 		return
 	end
+	player:SetAttribute("TeamId", session.TeamAssignments[tostring(player.UserId)])
 	local settings = adapter.buildSettings(modeSession)
 	self.context.outbound:setValue(player, "GameSettings", settings)
 	self.context.outbound:setValue(player, "GameTeams", self:buildGameTeams())
 	self.context.outbound:setValue(player, "BuildConstraints", self:getBuildConstraints())
 	local aliveUserIds = {}
 	for _, candidate in Players:GetPlayers() do
-		if self.roundState == "Pregame" or candidate:GetAttribute("Alive") == true then
+		if
+			self.roundState == "Pregame"
+			or candidate:GetAttribute("Alive") == true
+			or self.respawningPlayers[candidate] ~= nil
+		then
 			table.insert(aliveUserIds, candidate.UserId)
 		end
 	end
 	self.context.outbound:setValue(player, "Players", aliveUserIds)
 	self.context.outbound:setValue(player, "GameState", self.roundState)
 	self.context.outbound:setValue(player, "GameStateChangeTime", self.gameStateChangeTime)
-	player:SetAttribute("TeamId", session.TeamAssignments[tostring(player.UserId)])
+	-- Map population can take longer than PlayerSessions' bootstrap window for
+	-- these recovered arenas. Include a full inventory/currency snapshot in
+	-- round replication so late client initialization cannot miss starter gear
+	-- or early generator grants.
+	local playerSession = self.context.playerSessions:get(player)
+	if playerSession ~= nil then
+		self.context.outbound:sendInventory(player, playerSession.inventory)
+		self.context.outbound:sendActiveSlot(player, playerSession.activeSlot)
+		self.context.outbound:sendGameCurrency(player, playerSession.gameCurrency)
+	end
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		eggWarsService:replicatePlayer(player)
+	end
 end
 
 function RoundService.replicateAll(self)
@@ -241,7 +272,7 @@ function RoundService.bindPlayer(self, player: Player)
 	end)
 end
 
-function RoundService.spawnPlayer(self, player: Player, teamId: string): CFrame?
+function RoundService.spawnPlayer(self, player: Player, teamId: string, reloadCharacter: boolean?): CFrame?
 	local loadedMap = self.loadedMap
 	local adapter = self:getAdapter()
 	local session = self.session
@@ -253,14 +284,18 @@ function RoundService.spawnPlayer(self, player: Player, teamId: string): CFrame?
 		return nil
 	end
 	local character = player.Character
-	if character == nil then
+	if character == nil or reloadCharacter == true then
+		local previousCharacter = character
 		local success = pcall(function()
 			player:LoadCharacter()
 		end)
 		if not success then
 			return nil
 		end
-		character = player.Character or player.CharacterAdded:Wait()
+		character = player.Character
+		if character == nil or character == previousCharacter then
+			character = player.CharacterAdded:Wait()
+		end
 	end
 	character:PivotTo(spawnCFrame)
 	player:SetAttribute("Alive", true)
@@ -280,8 +315,16 @@ function RoundService.spawnPlayer(self, player: Player, teamId: string): CFrame?
 	end
 	self.context.inventoryService:clear(player)
 	local starterItems, heldItem = adapter.getStarterInventory(session.GameMode)
+	local spawnArmour = {} :: { string }
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil and eggWarsService:isActive() then
+		starterItems, heldItem, spawnArmour = eggWarsService:getSpawnInventory(player)
+	end
 	for _, item in starterItems do
 		self.context.inventoryService:changeItem(player, item.Type, item.Quantity)
+	end
+	if eggWarsService ~= nil and #spawnArmour > 0 then
+		eggWarsService:equipSpawnArmour(player, spawnArmour)
 	end
 	if heldItem ~= nil then
 		self.context.inventoryService:setHeldItem(player, heldItem)
@@ -399,6 +442,7 @@ function RoundService.startRound(self): boolean
 	self.roundId += 1
 	local roundId = self.roundId
 	table.clear(self.eliminatedPlayers)
+	table.clear(self.respawningPlayers)
 	self.loadedMap = self.mapService:load(session.GameMode, session.MapName)
 	if self.loadedMap == nil then
 		warn(("[RoundService] Could not load a map for %s."):format(session.GameMode))
@@ -425,6 +469,26 @@ function RoundService.startRound(self): boolean
 		if not self.running or self.roundId ~= roundId or self.session ~= session or self.roundState ~= "Pregame" then
 			return
 		end
+		local eggWarsService = self.context.eggWarsService
+		if
+			eggWarsService ~= nil
+			and self.loadedMap ~= nil
+			and not eggWarsService:prepareRound(session.GameMode, self.loadedMap.Model)
+		then
+			local selectedMapName = self.loadedMap.Model:GetAttribute("SelectedMapName")
+			warn(
+				("[RoundService] Could not populate Egg Wars map %s."):format(
+					if type(selectedMapName) == "string" then selectedMapName else self.loadedMap.Model.Name
+				)
+			)
+			self.roundActive = false
+			if session.Kind == "Public" then
+				self:completePublicRound()
+			else
+				self:resetRound()
+			end
+			return
+		end
 		local cagedPlayers = {}
 		local cagedSpawns = {}
 		for _, participant in Players:GetPlayers() do
@@ -444,6 +508,19 @@ function RoundService.startRound(self): boolean
 		self.gameStateChangeTime = os.time()
 		self.context.lobbyWorldService:hideWorld()
 		self:replicateAll()
+		-- Client Flamework may still be attaching after the large arena arrives.
+		-- Retry the complete cage snapshot without another @@INIT reset.
+		task.spawn(function()
+			for _, delaySeconds in REPLICATION_RETRY_DELAYS do
+				task.wait(delaySeconds)
+				if not self.running or self.roundId ~= roundId or self.session ~= session then
+					return
+				end
+				for _, participant in cagedPlayers do
+					self:replicatePlayer(participant)
+				end
+			end
+		end)
 		self.pregameService:begin(cagedPlayers, cagedSpawns, RoundConfig.CountdownDuration)
 		task.delay(RoundConfig.CountdownDuration, function()
 			if
@@ -470,8 +547,9 @@ end
 function RoundService.getAliveTeams(self): ({ [string]: { Player } }, number)
 	local teams = {}
 	for _, player in Players:GetPlayers() do
-		if player:GetAttribute("Alive") == true then
-			local teamId = player:GetAttribute("TeamId")
+		local respawn = self.respawningPlayers[player]
+		if player:GetAttribute("Alive") == true or respawn ~= nil then
+			local teamId = if respawn ~= nil then respawn.TeamId else player:GetAttribute("TeamId")
 			if type(teamId) == "string" and teamId ~= "" then
 				local teamPlayers = teams[teamId]
 				if teamPlayers == nil then
@@ -485,21 +563,67 @@ function RoundService.getAliveTeams(self): ({ [string]: { Player } }, number)
 	return teams, countDictionary(teams)
 end
 
+function RoundService.checkForWinner(self)
+	if self.roundState ~= "Countdown" and self.roundState ~= "InGame" then
+		return
+	end
+	local aliveTeams, aliveTeamCount = self:getAliveTeams()
+	if aliveTeamCount > 1 then
+		return
+	end
+	local winners = {}
+	for _, teamPlayers in aliveTeams do
+		for _, winner in teamPlayers do
+			table.insert(winners, winner)
+		end
+	end
+	self:finishRound(winners)
+end
+
 function RoundService.getRoundInfo(self): { RoundId: number?, GameMode: string?, MapName: string? }
 	local session = self.session
 	if session == nil then
 		return {}
 	end
+	local mapName = session.MapName
+	if self.loadedMap ~= nil then
+		local selectedMapName = self.loadedMap.Model:GetAttribute("SelectedMapName")
+		mapName = if type(selectedMapName) == "string" then selectedMapName else self.loadedMap.Model.Name
+	end
 	return {
 		RoundId = self.roundId,
 		GameMode = session.GameMode,
-		MapName = if self.loadedMap ~= nil then self.loadedMap.Model.Name else session.MapName,
+		MapName = mapName,
 	}
 end
 
 function RoundService.eliminatePlayer(self, player: Player, damageType: string, killer: Player?)
 	if (self.roundState ~= "Countdown" and self.roundState ~= "InGame") or player:GetAttribute("Alive") ~= true then
 		return
+	end
+	local killCredit = if killer ~= nil and killer.Parent == Players then killer else nil
+	local creditedWeapon: string? = nil
+	local combatService = self.context.combatService
+	if killCredit == nil and combatService ~= nil then
+		killCredit, creditedWeapon = combatService:getLastAttacker(player)
+	end
+	if combatService ~= nil then
+		combatService:clearLastAttacker(player)
+	end
+	local teamId = player:GetAttribute("TeamId")
+	local eggWarsService = self.context.eggWarsService
+	local willRespawn = eggWarsService ~= nil
+		and eggWarsService:isActive()
+		and type(teamId) == "string"
+		and eggWarsService:canRespawn(player)
+	if eggWarsService ~= nil then
+		eggWarsService:onPlayerDefeated(player, killCredit)
+	end
+
+	local position: Vector3? = nil
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		position = root.Position
 	end
 	player:SetAttribute("Alive", false)
 	player:SetAttribute("Spectating", true)
@@ -513,26 +637,22 @@ function RoundService.eliminatePlayer(self, player: Player, damageType: string, 
 		self.context.fallDamageService:clearPlayer(player)
 	end
 	self.context.inventoryService:clear(player)
-	table.insert(self.eliminatedPlayers, 1, player)
-	local killCredit = if killer ~= nil and killer.Parent == Players then killer else nil
-	local creditedWeapon: string? = nil
-	local combatService = self.context.combatService
-	if killCredit == nil and combatService ~= nil then
-		killCredit, creditedWeapon = combatService:getLastAttacker(player)
-	end
-	if combatService ~= nil then
-		combatService:clearLastAttacker(player)
-	end
-	local position: Vector3? = nil
-	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if root and root:IsA("BasePart") then
-		position = root.Position
+	if willRespawn then
+		self.respawningPlayers[player] = {
+			RoundId = self.roundId,
+			TeamId = teamId :: string,
+		}
+	else
+		table.insert(self.eliminatedPlayers, 1, player)
 	end
 	for _, recipient in Players:GetPlayers() do
-		self.context.outbound:fire("PlayerEliminated", recipient, player, killCredit, damageType, position)
 		self.context.outbound:fire("PlayerKilled", recipient, player, killCredit, damageType, position or Vector3.zero)
+		if not willRespawn then
+			self.context.outbound:fire("PlayerEliminated", recipient, player, killCredit, damageType, position)
+		end
 	end
-	self.context.outbound:fire("Spectate", player, nil, position, nil)
+	local respawnDelay = if willRespawn then eggWarsService:getRespawnDelay() else nil
+	self.context.outbound:fire("Spectate", player, nil, position, respawnDelay)
 	self:replicateAll()
 	local killLog = self.context.killLog
 	if killLog ~= nil then
@@ -541,11 +661,10 @@ function RoundService.eliminatePlayer(self, player: Player, damageType: string, 
 			local tool = killCredit.Character:FindFirstChildOfClass("Tool")
 			killerWeapon = if tool ~= nil then tool.Name else nil
 		end
+		local aliveTeams = self:getAliveTeams()
 		local survivors = 0
-		for _, candidate in Players:GetPlayers() do
-			if candidate:GetAttribute("Alive") == true then
-				survivors += 1
-			end
+		for _, teamPlayers in aliveTeams do
+			survivors += #teamPlayers
 		end
 		local roundInfo = self:getRoundInfo()
 		killLog:record({
@@ -563,15 +682,35 @@ function RoundService.eliminatePlayer(self, player: Player, damageType: string, 
 			Survivors = survivors,
 		})
 	end
-	local aliveTeams, aliveTeamCount = self:getAliveTeams()
-	if aliveTeamCount <= 1 then
-		local winners = {}
-		for _, teamPlayers in aliveTeams do
-			for _, winner in teamPlayers do
-				table.insert(winners, winner)
+	if willRespawn and respawnDelay ~= nil then
+		local respawnRoundId = self.roundId
+		task.delay(respawnDelay, function()
+			local respawn = self.respawningPlayers[player]
+			if
+				respawn == nil
+				or respawn.RoundId ~= respawnRoundId
+				or self.roundId ~= respawnRoundId
+				or (self.roundState ~= "Countdown" and self.roundState ~= "InGame")
+				or player.Parent ~= Players
+			then
+				return
 			end
-		end
-		self:finishRound(winners)
+			self.respawningPlayers[player] = nil
+			if self:spawnPlayer(player, respawn.TeamId, true) == nil then
+				self:checkForWinner()
+				return
+			end
+			self.context.outbound:setValue(player, "RespawnTime", nil)
+			self.context.outbound:fire("StopSpectating", player)
+			self.context.outbound:fire("Respawn", player)
+			self:replicateAll()
+		end)
+	end
+	-- A player waiting on an Egg Wars respawn still keeps their team alive. Running
+	-- the winner check here would immediately end a one-team Studio round before
+	-- the delayed respawn can complete.
+	if not willRespawn then
+		self:checkForWinner()
 	end
 end
 
@@ -582,7 +721,12 @@ function RoundService.finishRound(self, winners: { Player })
 	end
 	self.roundState = "Ended"
 	self.gameStateChangeTime = os.time()
+	table.clear(self.respawningPlayers)
 	self.pregameService:clear()
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		eggWarsService:endRound()
+	end
 	self.context.lobbyWorldService:showWorld()
 	local placements = { winners }
 	if #self.eliminatedPlayers > 0 then
@@ -620,6 +764,11 @@ function RoundService.resetRound(self)
 	self.gameStateChangeTime = os.time()
 	self.roundActive = false
 	self.pregameService:clear()
+	table.clear(self.respawningPlayers)
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		eggWarsService:clearRound()
+	end
 	self.context.lobbyWorldService:showWorld()
 	self.mapService:unload()
 	self.context.blockWorldService:clear()
@@ -648,6 +797,11 @@ function RoundService.completePublicRound(self)
 		return
 	end
 	self.roundActive = true
+	table.clear(self.respawningPlayers)
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		eggWarsService:clearRound()
+	end
 	if self.roundState ~= "Ended" then
 		self.roundState = "Ended"
 		self.gameStateChangeTime = os.time()
@@ -660,7 +814,7 @@ function RoundService.completePublicRound(self)
 end
 
 function RoundService.requestSpectate(self, player: Player)
-	if self.session == nil or self.roundState == "Pregame" then
+	if self.session == nil or self.roundState == "Pregame" or self.respawningPlayers[player] ~= nil then
 		return
 	end
 	self:spawnSpectator(player)
@@ -681,6 +835,14 @@ function RoundService.onPlayerRemoving(self, player: Player)
 	if (self.roundState == "Countdown" or self.roundState == "InGame") and player:GetAttribute("Alive") == true then
 		self:eliminatePlayer(player, "Void")
 	end
+	if self.respawningPlayers[player] ~= nil then
+		self.respawningPlayers[player] = nil
+		self:checkForWinner()
+	end
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		eggWarsService:onPlayerRemoving(player)
+	end
 	self.initializedPlayers[player] = nil
 	local characterConnection = self.characterConnections[player]
 	if characterConnection ~= nil then
@@ -697,6 +859,10 @@ end
 function RoundService.clearSession(self)
 	self.roundId += 1
 	self.pregameService:clear()
+	local eggWarsService = self.context.eggWarsService
+	if eggWarsService ~= nil then
+		eggWarsService:clearRound()
+	end
 	self.mapService:unload()
 	self.context.blockWorldService:clear()
 	self.loadedMap = nil
@@ -706,6 +872,7 @@ function RoundService.clearSession(self)
 	self.roundActive = false
 	table.clear(self.initializedPlayers)
 	table.clear(self.eliminatedPlayers)
+	table.clear(self.respawningPlayers)
 end
 
 function RoundService.start(self)
