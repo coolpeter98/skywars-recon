@@ -118,6 +118,9 @@ function HealthController.onStart(self)
 			isLocalPlayerKiller = killer == Players.LocalPlayer
 		end
 		self:animateDamage(character, damage, shield)
+		if character == Players.LocalPlayer.Character and damage > 0 then
+			Flamework.resolveDependency("jL9"):playSound(RobloxSound.Humanoid.DAMAGE)
+		end
 		if damageType == DamageType.Bow and isLocalPlayerKiller then
 			Flamework.resolveDependency("jL9"):playSound(RobloxSound.Projectile.HIT, {
 				["Volume"] = 0.8,
