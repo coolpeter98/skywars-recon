@@ -218,14 +218,11 @@ function RoundService.replicatePlayer(self, player: Player)
 	self.context.outbound:setValue(player, "Players", aliveUserIds)
 	self.context.outbound:setValue(player, "GameState", self.roundState)
 	self.context.outbound:setValue(player, "GameStateChangeTime", self.gameStateChangeTime)
-	-- Map population can take longer than PlayerSessions' bootstrap window for
-	-- these recovered arenas. Include a full inventory/currency snapshot in
-	-- round replication so late client initialization cannot miss starter gear
-	-- or early generator grants.
+	-- Inventory slot rearrangements are client-local. Starter inventory is sent
+	-- once by spawnPlayer; repeating a full snapshot here would overwrite the
+	-- player's chosen layout whenever unrelated round state is replicated.
 	local playerSession = self.context.playerSessions:get(player)
 	if playerSession ~= nil then
-		self.context.outbound:sendInventory(player, playerSession.inventory)
-		self.context.outbound:sendActiveSlot(player, playerSession.activeSlot)
 		self.context.outbound:sendGameCurrency(player, playerSession.gameCurrency)
 	end
 	local eggWarsService = self.context.eggWarsService
@@ -326,6 +323,12 @@ function RoundService.spawnPlayer(self, player: Player, teamId: string, reloadCh
 	if eggWarsService ~= nil and #spawnArmour > 0 then
 		eggWarsService:equipSpawnArmour(player, spawnArmour)
 	end
+	-- Send one authoritative post-spawn snapshot after starter items and armour
+	-- have settled. Later changes use deltas so client-local slot ordering stays
+	-- intact throughout the round.
+	local playerSession = self.context.playerSessions:require(player)
+	self.context.outbound:sendInventory(player, playerSession.inventory)
+	self.context.outbound:sendActiveSlot(player, playerSession.activeSlot)
 	if heldItem ~= nil then
 		self.context.inventoryService:setHeldItem(player, heldItem)
 	end

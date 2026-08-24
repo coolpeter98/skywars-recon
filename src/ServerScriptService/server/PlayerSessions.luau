@@ -117,7 +117,7 @@ function PlayerSessions.bootstrap(self, player: Player)
 			if currentSession == nil or player.Parent ~= Players then
 				return
 			end
-			self.outbound:sendBootstrap(player, currentSession, attemptIndex == 1)
+			self.outbound:sendBootstrap(player, currentSession, attemptIndex == 1, attemptIndex == 1)
 		end
 	end)
 

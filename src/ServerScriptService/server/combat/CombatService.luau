@@ -82,7 +82,7 @@ local MAX_MELEE_RANGE = MeleeConstants.MAXIMUM_HIT_RANGE_BLOCKS * 3 + 1.5
 -- with the KnockbackTest harness (kb.shove(80) / kb.bow(80)): melee
 -- strength 80 * 8 = 640 (~44.7 studs/s), projectiles 80 * 10 = 800
 -- (~55.8 studs/s), upward bias 0.6.
-local KNOCKBACK_BASE = 115
+local KNOCKBACK_BASE = 150
 local MELEE_KNOCKBACK_MULTIPLIER = 8
 local PROJECTILE_KNOCKBACK_MULTIPLIER = 10
 local KNOCKBACK_UPWARD_BIAS = 0.6

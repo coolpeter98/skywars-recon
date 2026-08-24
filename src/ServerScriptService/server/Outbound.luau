@@ -104,7 +104,13 @@ function Outbound.sendGameCurrency(self, player: Player, gameCurrency: { [string
 	self:setValue(player, "GameCurrency", gameCurrency)
 end
 
-function Outbound.sendBootstrap(self, player: Player, session: PlayerSession, resetStore: boolean?)
+function Outbound.sendBootstrap(
+	self,
+	player: Player,
+	session: PlayerSession,
+	resetStore: boolean?,
+	includeInventory: boolean?
+)
 	if resetStore then
 		self.setValueRemote:FireClient(player, { type = "@@INIT" })
 	end
@@ -112,8 +118,10 @@ function Outbound.sendBootstrap(self, player: Player, session: PlayerSession, re
 	self:sendParty(player, session.party)
 	self:sendFriends(player, session.friends, session.friendIds)
 	self:sendVerificationState(player, session.showVerify)
-	self:sendInventory(player, session.inventory)
-	self:sendActiveSlot(player, session.activeSlot)
+	if includeInventory ~= false then
+		self:sendInventory(player, session.inventory)
+		self:sendActiveSlot(player, session.activeSlot)
+	end
 	self:sendGameCurrency(player, session.gameCurrency)
 end
 

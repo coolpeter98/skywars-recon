@@ -33,6 +33,10 @@ type Inventory = {
 	Contents: { [number]: InventoryItem },
 }
 
+type ReacquiredUpgrade = {
+	LowerTierItems: { InventoryItem },
+}
+
 type ItemDefinition = {
 	Name: string,
 	ItemGroup: string?,
@@ -225,7 +229,12 @@ local function findBestItem(inventory: Inventory, score: (itemDefinition: ItemDe
 	return bestItem
 end
 
-local function updatePlayerInventory(inventory: Inventory, itemType: string, quantity: number): (Inventory?, number?)
+local function updatePlayerInventory(
+	inventory: Inventory,
+	itemType: string,
+	quantity: number,
+	preferOpenHotbarForUpgrade: boolean?
+): (Inventory?, number?, ReacquiredUpgrade?)
 	local itemDefinition: ItemDefinition? = Items[itemType]
 	if itemDefinition == nil or quantity == 0 or quantity % 1 ~= 0 then
 		return nil, nil
@@ -237,7 +246,7 @@ local function updatePlayerInventory(inventory: Inventory, itemType: string, qua
 	local function replaceItem(
 		currentItem: InventoryItem?,
 		score: (itemDefinition: ItemDefinition) -> number?
-	): (Inventory?, number?)
+	): (Inventory?, number?, ReacquiredUpgrade?)
 		if currentItem == nil or currentItem.Type == itemType then
 			return updateInventoryBasic(inventory, itemType, quantity)
 		end
@@ -246,6 +255,31 @@ local function updatePlayerInventory(inventory: Inventory, itemType: string, qua
 		local newScore = score(itemDefinition)
 		if currentScore ~= nil and newScore ~= nil and newScore <= currentScore then
 			return updateInventoryPreferMain(inventory, itemType, quantity)
+		end
+		-- A previously displaced lower-tier tool may be sitting in the main
+		-- inventory after its upgrade was deposited into a chest. If the
+		-- hotbar now has room, put the reacquired upgrade there instead of
+		-- replacing the lower-tier tool in its main-inventory slot.
+		if preferOpenHotbarForUpgrade and currentItem.Slot >= HOTBAR_SIZE then
+			local emptyHotbarSlot = findEmptySlotInRange(inventory, 0, math.min(HOTBAR_SIZE, inventory.Size) - 1)
+			if emptyHotbarSlot ~= nil then
+				local lowerTierItems: { InventoryItem } = {}
+				for _, existingItem in inventory.Contents do
+					local existingDefinition: ItemDefinition? = Items[existingItem.Type]
+					if existingDefinition ~= nil and score(existingDefinition) ~= nil then
+						table.insert(lowerTierItems, {
+							Slot = existingItem.Slot,
+							Type = existingItem.Type,
+							Quantity = existingItem.Quantity,
+						})
+					end
+				end
+				table.sort(lowerTierItems, function(left, right)
+					return left.Slot > right.Slot
+				end)
+				local updatedInventory, receivedSlot = updateInventoryBasic(inventory, itemType, quantity)
+				return updatedInventory, receivedSlot, { LowerTierItems = lowerTierItems }
+			end
 		end
 
 		local replacedInventory = cloneInventory(inventory)
@@ -1072,6 +1106,8 @@ function InventoryService.transferChestItem(
 	local equippedArmourType: string?
 	local equippedArmourItemType: string?
 	local previousEquippedArmourItemType: string?
+	local reacquiredUpgrade: ReacquiredUpgrade?
+	local receivedItemSlot: number?
 	local heldItemType = session.heldItemType
 	local heldItem = if heldItemType then findItem(session.inventory, heldItemType) else nil
 	local heldItemSlot = if heldItem then heldItem.Slot else nil
@@ -1095,7 +1131,8 @@ function InventoryService.transferChestItem(
 			updatedPlayerInventory, equippedArmourType, equippedArmourItemType =
 				addArmourFromChest(session.inventory, session.equippedArmour, itemType, -quantity)
 		else
-			updatedPlayerInventory = updatePlayerInventory(session.inventory, itemType, -quantity)
+			updatedPlayerInventory, receivedItemSlot, reacquiredUpgrade =
+				updatePlayerInventory(session.inventory, itemType, -quantity, true)
 		end
 		if updatedPlayerInventory == nil then
 			self:notify(player, "Your inventory is full.")
@@ -1120,6 +1157,19 @@ function InventoryService.transferChestItem(
 			self:replicateItemChange(player, previousEquippedArmourItemType, 1)
 		end
 		self:replicateItemChange(player, itemType, -quantity - 1)
+	elseif reacquiredUpgrade ~= nil then
+		-- The recovered client upgrades a lower-tier tool in place. When that
+		-- lower tier is in main storage, replay the delta as remove/add/restore:
+		-- with no competing tool present, the client puts the reacquired upgrade
+		-- into its first open hotbar slot, then restores the lower tiers at the
+		-- end of main inventory. This preserves every unrelated client-local slot.
+		for _, lowerTierItem in reacquiredUpgrade.LowerTierItems do
+			self:replicateItemChange(player, lowerTierItem.Type, -lowerTierItem.Quantity)
+		end
+		self:replicateItemChange(player, itemType, -quantity)
+		for _, lowerTierItem in reacquiredUpgrade.LowerTierItems do
+			self:replicateItemChange(player, lowerTierItem.Type, lowerTierItem.Quantity)
+		end
 	else
 		self:replicateItemChange(player, itemType, -quantity)
 	end
@@ -1133,7 +1183,9 @@ function InventoryService.transferChestItem(
 			self:setHeldItem(player, heldItemType)
 		end
 	elseif quantity < 0 then
-		local receivedItem = findItem(updatedPlayerInventory, itemType)
+		local receivedItem = if receivedItemSlot ~= nil
+			then updatedPlayerInventory.Contents[receivedItemSlot]
+			else findItem(updatedPlayerInventory, itemType)
 		local itemDefinition: ItemDefinition = Items[itemType]
 		if itemDefinition.Melee ~= nil and receivedItem ~= nil and receivedItem.Slot < HOTBAR_SIZE then
 			self:setHeldItem(player, itemType)
