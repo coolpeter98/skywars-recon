@@ -56,13 +56,23 @@ local function createParty(player: Player): { [string]: any }
 	}
 end
 
+export type DataServiceLike = {
+	onPlayerRemoving: (self: DataServiceLike, player: Player) -> (),
+}
+
 function PlayerSessions.new(outbound)
 	return setmetatable({
 		outbound = outbound,
 		sessions = {} :: { [Player]: PlayerSession },
 		connections = {} :: { RBXScriptConnection },
+		dataService = nil :: DataServiceLike?,
 		started = false,
 	}, PlayerSessions)
+end
+
+-- Injected after construction (the data service itself reads sessions).
+function PlayerSessions.setDataService(self, dataService: DataServiceLike)
+	self.dataService = dataService
 end
 
 function PlayerSessions.get(self, player: Player): PlayerSession?
@@ -151,6 +161,11 @@ function PlayerSessions.start(self)
 	table.insert(
 		self.connections,
 		Players.PlayerRemoving:Connect(function(player)
+			-- Persist before the session is dropped; the data service's own
+			-- PlayerRemoving hook would otherwise run after the removal.
+			if self.dataService ~= nil then
+				self.dataService:onPlayerRemoving(player)
+			end
 			self:remove(player)
 		end)
 	)

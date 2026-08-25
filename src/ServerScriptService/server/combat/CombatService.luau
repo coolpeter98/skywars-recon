@@ -563,6 +563,11 @@ function CombatService:dealDamage(
 	-- The number the client shows: health damage when any got through,
 	-- otherwise the amount the shield absorbed.
 	local indicatorDamage = if damageToHealth > 0 then damageToHealth else absorbedDamage
+	-- XP/stats tracking (no-op in custom rounds; guarded inside the service).
+	local experienceService = self.context.experienceService
+	if experienceService ~= nil then
+		experienceService:onDamage(attacker, target, indicatorDamage)
+	end
 	local targetCharacter = target.Character
 	if targetCharacter ~= nil then
 		self.context.outbound:fireAll(

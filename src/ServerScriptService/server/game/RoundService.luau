@@ -340,6 +340,9 @@ function RoundService.spawnPlayer(self, player: Player, teamId: string, reloadCh
 		self.context.inventoryService:setHeldItem(player, heldItem)
 	end
 	self:bindHumanoid(player)
+	if self.context.experienceService ~= nil then
+		self.context.experienceService:onPlayerSpawned(player)
+	end
 	return spawnCFrame
 end
 
@@ -453,6 +456,9 @@ function RoundService.startRound(self): boolean
 	local roundId = self.roundId
 	table.clear(self.eliminatedPlayers)
 	table.clear(self.respawningPlayers)
+	if self.context.experienceService ~= nil then
+		self.context.experienceService:onRoundStarted()
+	end
 	self.loadedMap = self.mapService:load(session.GameMode, session.MapName)
 	if self.loadedMap == nil then
 		warn(("[RoundService] Could not load a map for %s."):format(session.GameMode))
@@ -709,6 +715,10 @@ function RoundService.eliminatePlayer(self, player: Player, damageType: string, 
 	if eggWarsService ~= nil then
 		eggWarsService:onPlayerDefeated(player, killCredit)
 	end
+	local experienceService = self.context.experienceService
+	if experienceService ~= nil then
+		experienceService:onElimination(player, killCredit)
+	end
 
 	local position: Vector3? = nil
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -831,6 +841,12 @@ function RoundService.finishRound(self, winners: { Player })
 	if #self.eliminatedPlayers > 0 then
 		table.insert(placements, table.clone(self.eliminatedPlayers))
 	end
+	-- Awards and replicate XP before the GameResult event opens the end
+	-- screen, so the GameStats/Profile updates arrive first.
+	local experienceService = self.context.experienceService
+	if experienceService ~= nil then
+		experienceService:onRoundEnded(winners, placements)
+	end
 	local playersPresent = Players:GetPlayers()
 	self:replicateAll()
 	for _, recipient in playersPresent do
@@ -864,6 +880,9 @@ function RoundService.resetRound(self)
 	self.roundActive = false
 	self.pregameService:clear()
 	table.clear(self.respawningPlayers)
+	if self.context.experienceService ~= nil then
+		self.context.experienceService:clearRound()
+	end
 	local eggWarsService = self.context.eggWarsService
 	if eggWarsService ~= nil then
 		eggWarsService:clearRound()
@@ -901,6 +920,10 @@ function RoundService.completePublicRound(self)
 	end
 	self.roundActive = true
 	table.clear(self.respawningPlayers)
+	local experienceService = self.context.experienceService
+	if experienceService ~= nil then
+		experienceService:clearRound()
+	end
 	local eggWarsService = self.context.eggWarsService
 	if eggWarsService ~= nil then
 		eggWarsService:clearRound()
@@ -984,6 +1007,9 @@ function RoundService.clearSession(self)
 	table.clear(self.initializedPlayers)
 	table.clear(self.eliminatedPlayers)
 	table.clear(self.respawningPlayers)
+	if self.context.experienceService ~= nil then
+		self.context.experienceService:clearRound()
+	end
 end
 
 function RoundService.start(self)

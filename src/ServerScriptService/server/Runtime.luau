@@ -22,6 +22,8 @@ local BlockWorldService = require(script.Parent.world.BlockWorldService)
 local LobbyWorldService = require(script.Parent.world.LobbyWorldService)
 local KillLog = require(script.Parent.logging.KillLog)
 local NametagService = require(script.Parent.character.NametagService)
+local ExperienceService = require(script.Parent.experience.ExperienceService)
+local PlayerDataService = require(script.Parent.data.PlayerDataService)
 
 local SessionHandlers = require(script.Parent.handlers.SessionHandlers)
 local MatchmakingHandlers = require(script.Parent.handlers.MatchmakingHandlers)
@@ -83,6 +85,11 @@ function Runtime.new()
 	context.blockWorldService = blockWorldService
 	local nametagService = NametagService.new(context)
 	context.nametagService = nametagService
+	local playerDataService = PlayerDataService.new(context)
+	context.dataService = playerDataService
+	local experienceService = ExperienceService.new(context)
+	context.experienceService = experienceService
+	playerSessions:setDataService(playerDataService)
 	local eventRoutes = {}
 	appendRoutes(eventRoutes, SessionHandlers.new(context):getRoutes())
 	appendRoutes(eventRoutes, MatchmakingHandlers.new(context):getRoutes())
@@ -110,6 +117,8 @@ function Runtime.new()
 		fallDamageService = fallDamageService,
 		blockWorldService = blockWorldService,
 		nametagService = nametagService,
+		playerDataService = playerDataService,
+		experienceService = experienceService,
 		matchmakingService = matchmakingService,
 		killLog = context.killLog,
 		eventRouter = EventRouter.new(remoteRegistry, playerSessions, eventRoutes),
@@ -137,6 +146,7 @@ function Runtime.start(self)
 	self.eventRouter:start()
 	self.functionRouter:start()
 	self.playerSessions:start()
+	self.playerDataService:start()
 	self.nametagService:start()
 	self.started = true
 end
@@ -159,6 +169,7 @@ function Runtime.stop(self)
 	self.combatService:stop()
 	self.blockWorldService:stop()
 	self.inventoryService:stop()
+	self.playerDataService:stop()
 	self.playerSessions:stop()
 	self.nametagService:stop()
 	self.functionRouter:stop()
