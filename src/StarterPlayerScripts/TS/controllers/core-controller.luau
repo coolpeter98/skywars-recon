@@ -86,26 +86,28 @@ end
 
 function CoreController.setCoreSafe(self: CoreController, key: string, value: any)
 	task.spawn(function()
-		repeat
-			local success, _ = RuntimeLib.try(function()
+		while true do
+			local success = pcall(function()
 				StarterGui:SetCore(key, value)
-				return RuntimeLib.TRY_BREAK
-			end, function()
-				task.wait(0.1)
 			end)
-		until success
+			if success then
+				return
+			end
+			task.wait(0.1)
+		end
 	end)
 end
 
 function CoreController.getCoreSafe(self: CoreController, key: string): ...any
-	repeat
-		local success, results = RuntimeLib.try(function()
-			return RuntimeLib.TRY_RETURN, { StarterGui:GetCore(key) }
-		end, function()
-			task.wait(0.1)
-		end)
-	until success
-	return unpack(results)
+	while true do
+		local results = table.pack(pcall(function()
+			return StarterGui:GetCore(key)
+		end))
+		if results[1] then
+			return unpack(results, 2, results.n)
+		end
+		task.wait(0.1)
+	end
 end
 
 function CoreController.enableChat(self: CoreController)

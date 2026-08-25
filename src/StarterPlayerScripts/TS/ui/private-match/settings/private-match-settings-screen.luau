@@ -60,6 +60,13 @@ function PrivateMatchSettingsScreen.constructor(self: PrivateMatchSettingsScreen
 	function self.Component()
 		local state = useGlobalStore("CustomGame")
 		local tab, setTab = useState(0)
+		-- A Studio lobby changes role in-place. A click already queued on the
+		-- frame of that transition can mount this screen before CustomGame has
+		-- replicated, so tolerate the short readiness gap instead of crashing
+		-- the React tree by indexing nil.
+		if state == nil then
+			return nil
+		end
 		local serverData = state.ServerData
 		local settings = state.Settings
 		local isOwner = RunService:IsStudio() or serverData.OwnerId == Players.LocalPlayer.UserId

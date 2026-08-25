@@ -205,7 +205,9 @@ end
 
 function BlockPlacementService.isPlacementAllowedForServer(self, player: Player, position: Vector3): boolean
 	local runtimeContext = self.context.runtimeContext:get()
-	if runtimeContext.Role == "Private" then
+	local bridgeService = self.context.bridgeService
+	local isBridge = bridgeService ~= nil and bridgeService:isGameMode(runtimeContext.GameMode)
+	if runtimeContext.Role == "Private" or isBridge then
 		return self.context.roundService:isBlockPlacementAllowed(player, position)
 	end
 	return runtimeContext.Role == "Game"

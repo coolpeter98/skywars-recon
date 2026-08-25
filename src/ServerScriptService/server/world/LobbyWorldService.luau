@@ -137,8 +137,12 @@ function LobbyWorldService.setPregame(self): boolean
 		-- feet once it moves to ServerStorage; respawn them onto the
 		-- pre-game lobby's own SpawnLocations. On reserved servers the swap
 		-- happens before anyone joins, so this loop is a no-op there.
-		pcall(function()
-			player:LoadCharacter()
+		-- LoadCharacter can yield for several seconds in Studio. The world
+		-- switch and custom-state replication must not block behind it.
+		task.spawn(function()
+			pcall(function()
+				player:LoadCharacter()
+			end)
 		end)
 	end
 	return true

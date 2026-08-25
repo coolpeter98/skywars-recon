@@ -229,6 +229,10 @@ function RoundService.replicatePlayer(self, player: Player)
 	if eggWarsService ~= nil then
 		eggWarsService:replicatePlayer(player)
 	end
+	local bridgeService = self.context.bridgeService
+	if bridgeService ~= nil then
+		bridgeService:replicatePlayer(player)
+	end
 end
 
 function RoundService.replicateAll(self)
@@ -313,6 +317,9 @@ function RoundService.spawnPlayer(self, player: Player, teamId: string, reloadCh
 	self.context.inventoryService:clear(player)
 	local starterItems, heldItem = adapter.getStarterInventory(session.GameMode)
 	local spawnArmour = {} :: { string }
+	if type(adapter.getStarterArmour) == "function" then
+		spawnArmour = adapter.getStarterArmour(session.GameMode)
+	end
 	local eggWarsService = self.context.eggWarsService
 	if eggWarsService ~= nil and eggWarsService:isActive() then
 		starterItems, heldItem, spawnArmour = eggWarsService:getSpawnInventory(player)
@@ -320,8 +327,8 @@ function RoundService.spawnPlayer(self, player: Player, teamId: string, reloadCh
 	for _, item in starterItems do
 		self.context.inventoryService:changeItem(player, item.Type, item.Quantity)
 	end
-	if eggWarsService ~= nil and #spawnArmour > 0 then
-		eggWarsService:equipSpawnArmour(player, spawnArmour)
+	for _, itemType in spawnArmour do
+		self.context.inventoryService:equipArmour(player, itemType)
 	end
 	-- Send one authoritative post-spawn snapshot after starter items and armour
 	-- have settled. Later changes use deltas so client-local slot ordering stays
@@ -473,15 +480,20 @@ function RoundService.startRound(self): boolean
 			return
 		end
 		local eggWarsService = self.context.eggWarsService
-		if
-			eggWarsService ~= nil
-			and self.loadedMap ~= nil
-			and not eggWarsService:prepareRound(session.GameMode, self.loadedMap.Model)
-		then
+		local bridgeService = self.context.bridgeService
+		local loadedMap = self.loadedMap
+		local eggWarsPrepared = eggWarsService == nil
+			or loadedMap == nil
+			or eggWarsService:prepareRound(session.GameMode, loadedMap.Model)
+		local bridgePrepared = bridgeService == nil
+			or loadedMap == nil
+			or bridgeService:prepareRound(session.GameMode, loadedMap.Model)
+		if not eggWarsPrepared or not bridgePrepared then
 			local selectedMapName = self.loadedMap.Model:GetAttribute("SelectedMapName")
 			warn(
-				("[RoundService] Could not populate Egg Wars map %s."):format(
-					if type(selectedMapName) == "string" then selectedMapName else self.loadedMap.Model.Name
+				("[RoundService] Could not populate runtime map %s for %s."):format(
+					if type(selectedMapName) == "string" then selectedMapName else self.loadedMap.Model.Name,
+					session.GameMode
 				)
 			)
 			self.roundActive = false
@@ -537,12 +549,77 @@ function RoundService.startRound(self): boolean
 			self.pregameService:finish()
 			self.roundState = "InGame"
 			self.gameStateChangeTime = os.time()
+			if bridgeService ~= nil then
+				bridgeService:onCagesReleased()
+			end
 			self:replicateAll()
 			for _, participant in Players:GetPlayers() do
 				self.context.outbound:fire("GameStateChangeTime", participant, 0)
 				self.context.outbound:fire("GameStarted", participant)
 			end
 		end)
+	end)
+	return true
+end
+
+function RoundService.beginBridgeScoreReset(self, duration: number): boolean
+	local session = self.session
+	local bridgeService = self.context.bridgeService
+	if
+		session == nil
+		or self.loadedMap == nil
+		or self.roundState ~= "InGame"
+		or not self.roundActive
+		or bridgeService == nil
+		or not bridgeService:isActive()
+	then
+		return false
+	end
+	local roundId = self.roundId
+	bridgeService:onCagesStarted()
+	self.roundState = "Countdown"
+	self.gameStateChangeTime = os.time()
+	table.clear(self.respawningPlayers)
+	self.context.combatService:clearLastAttackers()
+	self.context.powerUpService:clearAll()
+	self.context.regenerationService:clearAll()
+	self.context.fallDamageService:clearAll()
+
+	local cagedPlayers = {}
+	local cagedSpawns = {}
+	for _, participant in Players:GetPlayers() do
+		local userIdKey = tostring(participant.UserId)
+		local teamId = session.TeamAssignments[userIdKey]
+		if session.ParticipantUserIds[userIdKey] and teamId ~= nil then
+			local spawnCFrame = self:spawnPlayer(participant, teamId, true)
+			if spawnCFrame ~= nil then
+				table.insert(cagedPlayers, participant)
+				cagedSpawns[participant] = spawnCFrame
+			end
+		else
+			self:spawnSpectator(participant)
+		end
+	end
+	self:replicateAll()
+	self.pregameService:begin(cagedPlayers, cagedSpawns, duration, "BridgeReset")
+	task.delay(duration, function()
+		if
+			not self.running
+			or self.roundId ~= roundId
+			or self.session ~= session
+			or self.roundState ~= "Countdown"
+			or not bridgeService:isActive()
+		then
+			return
+		end
+		self.pregameService:finish()
+		self.roundState = "InGame"
+		self.gameStateChangeTime = os.time()
+		bridgeService:onCagesReleased()
+		self:replicateAll()
+		for _, participant in Players:GetPlayers() do
+			self.context.outbound:fire("GameStateChangeTime", participant, 0)
+		end
 	end)
 	return true
 end
@@ -568,6 +645,10 @@ end
 
 function RoundService.checkForWinner(self)
 	if self.roundState ~= "Countdown" and self.roundState ~= "InGame" then
+		return
+	end
+	local bridgeService = self.context.bridgeService
+	if bridgeService ~= nil and bridgeService:isActive() then
 		return
 	end
 	local aliveTeams, aliveTeamCount = self:getAliveTeams()
@@ -615,10 +696,16 @@ function RoundService.eliminatePlayer(self, player: Player, damageType: string, 
 	end
 	local teamId = player:GetAttribute("TeamId")
 	local eggWarsService = self.context.eggWarsService
-	local willRespawn = eggWarsService ~= nil
+	local eggWarsRespawn = eggWarsService ~= nil
 		and eggWarsService:isActive()
 		and type(teamId) == "string"
 		and eggWarsService:canRespawn(player)
+	local bridgeService = self.context.bridgeService
+	local bridgeRespawn = bridgeService ~= nil
+		and bridgeService:isActive()
+		and type(teamId) == "string"
+		and bridgeService:canRespawn(player)
+	local willRespawn = eggWarsRespawn or bridgeRespawn
 	if eggWarsService ~= nil then
 		eggWarsService:onPlayerDefeated(player, killCredit)
 	end
@@ -654,7 +741,12 @@ function RoundService.eliminatePlayer(self, player: Player, damageType: string, 
 			self.context.outbound:fire("PlayerEliminated", recipient, player, killCredit, damageType, position)
 		end
 	end
-	local respawnDelay = if willRespawn then eggWarsService:getRespawnDelay() else nil
+	local respawnDelay: number? = nil
+	if bridgeRespawn and bridgeService ~= nil then
+		respawnDelay = bridgeService:getRespawnDelay()
+	elseif eggWarsRespawn and eggWarsService ~= nil then
+		respawnDelay = eggWarsService:getRespawnDelay()
+	end
 	self.context.outbound:fire("Spectate", player, nil, position, respawnDelay)
 	self:replicateAll()
 	local killLog = self.context.killLog
@@ -709,9 +801,9 @@ function RoundService.eliminatePlayer(self, player: Player, damageType: string, 
 			self:replicateAll()
 		end)
 	end
-	-- A player waiting on an Egg Wars respawn still keeps their team alive. Running
-	-- the winner check here would immediately end a one-team Studio round before
-	-- the delayed respawn can complete.
+	-- A player waiting on a mode respawn still keeps their team alive. Running the
+	-- winner check here would immediately end a one-team Studio round before the
+	-- respawn can complete.
 	if not willRespawn then
 		self:checkForWinner()
 	end
@@ -729,6 +821,10 @@ function RoundService.finishRound(self, winners: { Player })
 	local eggWarsService = self.context.eggWarsService
 	if eggWarsService ~= nil then
 		eggWarsService:endRound()
+	end
+	local bridgeService = self.context.bridgeService
+	if bridgeService ~= nil then
+		bridgeService:endRound()
 	end
 	self.context.lobbyWorldService:showWorld()
 	local placements = { winners }
@@ -772,6 +868,10 @@ function RoundService.resetRound(self)
 	if eggWarsService ~= nil then
 		eggWarsService:clearRound()
 	end
+	local bridgeService = self.context.bridgeService
+	if bridgeService ~= nil then
+		bridgeService:clearRound()
+	end
 	self.context.lobbyWorldService:showWorld()
 	self.mapService:unload()
 	self.context.blockWorldService:clear()
@@ -804,6 +904,10 @@ function RoundService.completePublicRound(self)
 	local eggWarsService = self.context.eggWarsService
 	if eggWarsService ~= nil then
 		eggWarsService:clearRound()
+	end
+	local bridgeService = self.context.bridgeService
+	if bridgeService ~= nil then
+		bridgeService:clearRound()
 	end
 	if self.roundState ~= "Ended" then
 		self.roundState = "Ended"
@@ -865,6 +969,10 @@ function RoundService.clearSession(self)
 	local eggWarsService = self.context.eggWarsService
 	if eggWarsService ~= nil then
 		eggWarsService:clearRound()
+	end
+	local bridgeService = self.context.bridgeService
+	if bridgeService ~= nil then
+		bridgeService:clearRound()
 	end
 	self.mapService:unload()
 	self.context.blockWorldService:clear()

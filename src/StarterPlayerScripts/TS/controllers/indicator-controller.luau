@@ -67,7 +67,7 @@ function IndicatorController.onTick(self: IndicatorController, deltaTime: number
 	self.indicator:SetPrimaryPartCFrame(self.indicator:GetPrimaryPartCFrame() * CFrame.Angles(0, 2.5 * deltaTime, 0))
 end
 
-function IndicatorController.setupIndicator(self: IndicatorController, position: CFrame?)
+function IndicatorController.setupIndicator(self: IndicatorController, position: Vector3?)
 	if not position then
 		local indicator = self.indicator
 		if indicator ~= nil then

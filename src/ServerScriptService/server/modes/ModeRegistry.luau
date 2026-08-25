@@ -1,9 +1,10 @@
 --!strict
 
 local SkyWarsMode = require(script.Parent.SkyWarsMode)
+local BridgeMode = require(script.Parent.BridgeMode)
 local EggWarsMode = require(script.Parent.EggWarsMode)
 
-local adapters = { SkyWarsMode, EggWarsMode }
+local adapters = { SkyWarsMode, BridgeMode, EggWarsMode }
 
 local ModeRegistry = {}
 

@@ -16,6 +16,7 @@ local RuntimeContextService = require(script.Parent.matchmaking.RuntimeContextSe
 local PartyService = require(script.Parent.party.PartyService)
 local CustomGameService = require(script.Parent.custom.CustomGameService)
 local RoundService = require(script.Parent.game.RoundService)
+local BridgeService = require(script.Parent.modes.BridgeService)
 local EggWarsService = require(script.Parent.modes.EggWarsService)
 local BlockWorldService = require(script.Parent.world.BlockWorldService)
 local LobbyWorldService = require(script.Parent.world.LobbyWorldService)
@@ -66,6 +67,8 @@ function Runtime.new()
 	context.inventoryService = inventoryService
 	local eggWarsService = EggWarsService.new(context)
 	context.eggWarsService = eggWarsService
+	local bridgeService = BridgeService.new(context)
+	context.bridgeService = bridgeService
 	local combatService = CombatService.new(context)
 	context.combatService = combatService
 	local projectileService = ProjectileService.new(context)
@@ -99,6 +102,7 @@ function Runtime.new()
 		customGameService = customGameService,
 		inventoryService = inventoryService,
 		eggWarsService = eggWarsService,
+		bridgeService = bridgeService,
 		combatService = combatService,
 		projectileService = projectileService,
 		powerUpService = powerUpService,
@@ -142,6 +146,7 @@ function Runtime.stop(self)
 		return
 	end
 	self.roundService:stop()
+	self.bridgeService:stop()
 	self.eggWarsService:stop()
 	self.customGameService:stop()
 	self.partyService:stop()

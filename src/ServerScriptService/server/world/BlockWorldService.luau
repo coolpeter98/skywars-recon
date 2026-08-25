@@ -353,12 +353,14 @@ function BlockWorldService.collectFaceTextures(self, part: BasePart, itemType: s
 	end
 end
 
--- Mirrors BlockPlacementService's role gate: breaking is allowed wherever
--- placement would be allowed (active rounds: inside the arena constraints
--- while alive; public game servers: anywhere).
+-- Mirrors BlockPlacementService's role gate. Private rounds and Bridge's
+-- public queues enforce their authored build bounds for both mining and
+-- placement; legacy public modes retain their existing role-level gate.
 function BlockWorldService.isInteractionAllowed(self, player: Player, position: Vector3): boolean
 	local runtimeContext = self.context.runtimeContext:get()
-	if runtimeContext.Role == "Private" then
+	local bridgeService = self.context.bridgeService
+	local isBridge = bridgeService ~= nil and bridgeService:isGameMode(runtimeContext.GameMode)
+	if runtimeContext.Role == "Private" or isBridge then
 		return self.context.roundService:isBlockPlacementAllowed(player, position)
 	end
 	return runtimeContext.Role == "Game"

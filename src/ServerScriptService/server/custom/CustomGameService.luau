@@ -255,6 +255,11 @@ end
 function CustomGameService.teleportParty(self, owner: Player, partyPlayers: { Player }, record: CustomGameRecord)
 	if RunService:IsStudio() then
 		self.record = record
+		-- Publish the custom snapshot before the replicated role exposes the
+		-- custom dock. The pre-game world transition reloads characters and can
+		-- take several seconds in Studio; without this ordering the Settings
+		-- button renders against a nil CustomGame store during that whole gap.
+		self:replicateAll()
 		self.context.runtimeContext:setPrivate(record.Settings.GameMode, record.Id)
 		self:configureRoundSession()
 		self:replicateAll()
@@ -471,6 +476,9 @@ function CustomGameService.setGameMode(self, player: Player, gameMode: string)
 	local userIds = self:getParticipantUserIds()
 	self:updateLocalRecord(function(currentRecord)
 		currentRecord.Settings.GameMode = gameMode
+		if not adapter.isMapNameValid(currentRecord.Settings.MapName) then
+			currentRecord.Settings.MapName = ""
+		end
 		if currentRecord.Settings.AllowTeamSelection then
 			currentRecord.TeamAssignments =
 				adapter.sanitizeTeamAssignments(gameMode, userIds, currentRecord.TeamAssignments)

@@ -72,7 +72,10 @@ return {
 		local dockProps = {
 			["IsPartyOwner"] = isPartyOwner,
 			["IsGameServer"] = PlaceUtil.isGameServer(),
-			["IsCustomGame"] = PlaceUtil.isPrivateServer(),
+			-- The replicated Private role can arrive before the CustomGame
+			-- snapshot during an in-place Studio transition. Do not expose the
+			-- Settings button until the screen has the data it renders.
+			["IsCustomGame"] = PlaceUtil.isPrivateServer() and customGame ~= nil,
 			["IsCustomOwner"] = isCustomOwner,
 			["IsCustomGameOverFull"] = isCustomGameOverFull,
 		}

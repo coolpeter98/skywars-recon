@@ -20,6 +20,10 @@
 -- and GO fires at the exact release moment — its sound and the cages
 -- dropping are simultaneous.
 --
+-- Bridge score resets reuse only the cage/containment mechanics. Their
+-- five-second cadence is three recovered tick sounds followed by the
+-- recovered cage-release sound; the score result owns the centre title.
+--
 -- Cages: byte-for-byte the client's GlassCage design (six 11x11x1
 -- "SpawnGlass" parts, SmoothPlastic, Reflectance 1, Transparency 0.8, one
 -- per axis normal six studs from the cage centre), parented to
@@ -70,14 +74,14 @@ local CAGES_FOLDER_NAME = "Cages"
 -- How often the containment heartbeat checks caged players.
 local CONTAINMENT_INTERVAL = 0.1
 
--- The centre-screen cooldown beats: index = seconds since the cages
--- appeared. The first beat is silent; the voice countdown follows.
-local COUNTDOWN_TITLES = {
-	{ Seconds = 0, Text = "4", SoundId = nil },
-	{ Seconds = 1, Text = "3", SoundId = RobloxSound.Countdown.THREE },
-	{ Seconds = 2, Text = "2", SoundId = RobloxSound.Countdown.TWO },
-	{ Seconds = 3, Text = "1", SoundId = RobloxSound.Countdown.ONE },
+local COUNTDOWN_SOUNDS = {
+	[3] = RobloxSound.Countdown.THREE,
+	[2] = RobloxSound.Countdown.TWO,
+	[1] = RobloxSound.Countdown.ONE,
 }
+local BRIDGE_RESET_TICK_COUNT = 3
+
+type CageCountdownStyle = "Opening" | "BridgeReset"
 
 local PregameService = {}
 PregameService.__index = PregameService
@@ -119,6 +123,7 @@ function PregameService.new(context)
 		generation = 0,
 		startTime = 0,
 		duration = 0,
+		countdownStyle = nil :: CageCountdownStyle?,
 		cages = {} :: { Model },
 		cagedEntries = {} :: { [Player]: { SpawnCFrame: CFrame, Center: Vector3 } },
 		characterConnections = {} :: { RBXScriptConnection },
@@ -136,6 +141,10 @@ function PregameService.sendTitle(self, text: string, soundId: string?)
 		title.SoundBefore = soundId
 	end
 	self.context.outbound:fireAll("Title", title)
+end
+
+function PregameService.playSound(self, soundName: string, soundId: string)
+	self.context.outbound:fireAll("SoundPlayed", soundName, soundId, nil, { Volume = 1 })
 end
 
 function PregameService.stopContainment(self)
@@ -171,7 +180,8 @@ function PregameService.begin(
 	self,
 	players: { Player },
 	spawnPositions: { [Player]: CFrame },
-	duration: number
+	duration: number,
+	countdownStyle: CageCountdownStyle?
 ): boolean
 	if duration <= 0 then
 		return false
@@ -183,6 +193,7 @@ function PregameService.begin(
 	self.generation += 1
 	self.startTime = os.clock()
 	self.duration = duration
+	self.countdownStyle = countdownStyle or "Opening"
 
 	local cagesFolder = Workspace:FindFirstChild(CAGES_FOLDER_NAME)
 	if cagesFolder == nil or not cagesFolder:IsA("Folder") then
@@ -249,16 +260,36 @@ function PregameService.begin(
 		end
 	end)
 
-	-- The centre-screen cooldown: 4 (silent), then the voice countdown.
-	for _, beat in COUNTDOWN_TITLES do
-		if beat.Seconds == 0 then
-			self:sendTitle(beat.Text, beat.SoundId)
-		elseif beat.Seconds < duration then
-			task.delay(beat.Seconds, function()
-				if self.active and self.generation == generation then
-					self:sendTitle(beat.Text, beat.SoundId)
-				end
-			end)
+	if self.countdownStyle == "BridgeReset" then
+		-- A five-second reset places its three ticks at t=2/3/4 and the release
+		-- sound at t=5. SoundPlayed keeps the point result title visible for its
+		-- full three seconds instead of replacing it with numeric Title events.
+		local firstTickTime = math.max(0, duration - BRIDGE_RESET_TICK_COUNT)
+		for tickIndex = 1, BRIDGE_RESET_TICK_COUNT do
+			local tickTime = firstTickTime + tickIndex - 1
+			if tickTime < duration then
+				task.delay(tickTime, function()
+					if self.active and self.generation == generation then
+						self:playSound("BridgeCageTick", RobloxSound.Misc.TICK)
+					end
+				end)
+			end
+		end
+	else
+		-- The normal opening countdown begins at four and retains the recovered
+		-- THREE/TWO/ONE voices before GO.
+		for secondsRemaining = math.ceil(duration), 1, -1 do
+			local visibleSeconds = secondsRemaining
+			local elapsed = duration - visibleSeconds
+			if elapsed <= 0 then
+				self:sendTitle(tostring(visibleSeconds), COUNTDOWN_SOUNDS[visibleSeconds])
+			elseif elapsed < duration then
+				task.delay(elapsed, function()
+					if self.active and self.generation == generation then
+						self:sendTitle(tostring(visibleSeconds), COUNTDOWN_SOUNDS[visibleSeconds])
+					end
+				end)
+			end
 		end
 	end
 	return true
@@ -270,12 +301,17 @@ function PregameService.finish(self)
 	if not self.active then
 		return
 	end
-	self:sendTitle("", RobloxSound.Countdown.GO)
+	if self.countdownStyle == "BridgeReset" then
+		self:playSound("BridgeCageRelease", RobloxSound.Misc.TICK_START)
+	else
+		self:sendTitle("", RobloxSound.Countdown.GO)
+	end
 	self.active = false
 	self.generation += 1
 	self:stopContainment()
 	self:destroyArena()
 	self.phase = nil
+	self.countdownStyle = nil
 end
 
 -- Stops any running pre-game and removes its world without a GO sound —
@@ -288,6 +324,7 @@ function PregameService.clear(self)
 		self:destroyArena()
 	end
 	self.phase = nil
+	self.countdownStyle = nil
 end
 
 -- A player arriving mid-pre-game (spectators admitted during a round) gets
@@ -303,12 +340,15 @@ function PregameService.syncPlayer(self, player: Player)
 	if not self.active then
 		return
 	end
+	if self.countdownStyle == "BridgeReset" then
+		return
+	end
 	local remaining = self.startTime + self.duration - os.clock()
 	if remaining <= 0 then
 		return
 	end
 	if remaining < 1 then
-		self.context.outbound:fire("Title", player, { Text = GO_TITLE_TEXT, Duration = remaining })
+		self.context.outbound:fire("Title", player, { Text = "", Duration = remaining })
 		return
 	end
 	self.context.outbound:fire("Title", player, {

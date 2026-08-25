@@ -321,13 +321,16 @@ local function getImportedMapNames(gameMode: string): { string }
 		return mapNames
 	end
 	for _, child in modeMaps:GetChildren() do
+		local catalogName = if type(adapter.getCatalogMapName) == "function"
+			then adapter.getCatalogMapName(child.Name)
+			else child.Name
 		if
 			child:IsA("Model")
-			and adapter.isMapNameValid(child.Name)
+			and adapter.isMapNameValid(catalogName)
 			and getAnchorPosition(child) ~= nil
 			and child:FindFirstChild("SpawnLocations") ~= nil
 		then
-			table.insert(mapNames, child.Name)
+			table.insert(mapNames, catalogName)
 		end
 	end
 	table.sort(mapNames)
@@ -344,7 +347,10 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	end
 	local maps = ServerStorage:FindFirstChild("Maps")
 	local modeMaps = maps and maps:FindFirstChild(adapter.getMapAssetFolder())
-	local mapAsset = modeMaps and modeMaps:FindFirstChild(mapName)
+	local assetName = if type(adapter.resolveMapAssetName) == "function"
+		then adapter.resolveMapAssetName(mapName)
+		else mapName
+	local mapAsset = modeMaps and modeMaps:FindFirstChild(assetName)
 	if mapAsset == nil or not mapAsset:IsA("Model") then
 		return nil
 	end
@@ -370,8 +376,8 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	map.Parent = blockContainer
 
 	-- Most modes read numbered SpawnLocations. WorldData-driven modes can
-	-- provide their own reader; Egg Wars does this because its empty runtime
-	-- folder is populated only when players move from the lobby into cages.
+	-- provide their own reader because their empty runtime folders are
+	-- populated only when players move from the lobby into cages.
 	local teamIds = adapter.getTeamIds(gameMode)
 	local spawnPositions: { [string]: CFrame } = {}
 	local importedSpawnReader = adapter.getImportedSpawnPositions
@@ -428,8 +434,8 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	end
 
 	-- The top-level anchor SpawnLocation mirrors WorldData.Spawn; it must not
-	-- act as a default Roblox spawn after the map has been consumed. Egg Wars
-	-- keeps it until deferred population so its authored runtime shape matches
+	-- act as a default Roblox spawn after the map has been consumed. Deferred
+	-- modes keep it until population so their authored runtime shape matches
 	-- the recovered server snapshot during the pre-game lobby.
 	if not usesDeferredWorldPopulation then
 		for _, child in map:GetChildren() do
@@ -482,7 +488,15 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 
 	local boundingCFrame = map:GetBoundingBox()
 	local mapCenter = boundingCFrame.Position
-	local constraints = getBuildConstraints(map)
+	local importedBuildConstraintReader = adapter.getImportedBuildConstraints
+	local constraints = if type(importedBuildConstraintReader) == "function"
+		then importedBuildConstraintReader(map)
+		else getBuildConstraints(map)
+	if constraints == nil or #constraints == 0 then
+		warn(("[MapService] map %q has invalid build constraints"):format(mapName))
+		map:Destroy()
+		return nil
+	end
 	return {
 		BuildConstraints = constraints,
 		Model = map,
