@@ -6,3 +6,6 @@ tools/rbxm-parser-ts/dist/
 # Local Studio saves (never commit these)
 sw.rbxl
 sw.rbxl.lock
+
+# Vendored library clones (provenance; only lib files are copied into src/)
+.vendor-drop/
