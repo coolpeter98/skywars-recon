@@ -255,9 +255,9 @@ function BlockPlacementService.placeBlock(
 	self.reservedPositions[position] = true
 	local success, placementResult = pcall(function(): boolean
 		local blockContainer = getBlockContainer()
-		-- Character geometry is intentionally ignored. Pillaring and clutch
-		-- placement put the predicted cell through the placing player's body,
-		-- and other players must not make an otherwise valid cell fail.
+		-- Character geometry is ignored on purpose: pillaring/clutch placement
+		-- puts the cell through the placer's body, and other players must not
+		-- make an otherwise valid cell fail.
 		if containsBlock(blockContainer, position) or not hasAdjacentBlock(blockContainer, position) then
 			return self:reject(player, predictionId)
 		end
@@ -271,8 +271,7 @@ function BlockPlacementService.placeBlock(
 			block:Destroy()
 		end
 		if committed and self.context.blockWorldService ~= nil then
-			-- Keep the voxel world in sync so placed blocks can be mined and
-			-- hide neighbouring map faces exactly like map blocks do.
+			-- Placed blocks must be minable and hide neighbour faces like map blocks.
 			self.context.blockWorldService:registerPart(block, resolvedItemType)
 		end
 		return committed

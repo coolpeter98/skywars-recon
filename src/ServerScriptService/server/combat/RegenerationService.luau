@@ -1,21 +1,9 @@
 --!strict
 
--- Server-authoritative natural regeneration. The clock ticks once per
--- second; every alive player in a running round advances one tick and is
--- healed by the amount their tick group grants (see RegenerationRules:
--- group 1 heals nothing, group 2 heals 1/tick, group 3 heals 2/tick, and so
--- on, capped at MAX_HEALTH). Taking health damage resets the player's tick
--- clock to zero (CombatService.dealDamage -> onPlayerDamaged), so
--- regeneration only resumes after the player has gone unhurt for a full
--- tick group.
---
--- Healing flows through the replicated `Health` Player attribute — the
--- client's health bar and name tags read that attribute, not the Humanoid —
--- so no client change is required.
---
--- Lifecycle: spawning into a round resets the clock, eliminations clear it,
--- and round resets clear every player's clock so each round starts clean.
--- Outside a running round the ticker drops all counters.
+-- Natural regeneration: 1-second ticks, ramping per 4-tick group (RegenerationRules).
+-- Any hit that costs health resets the clock (CombatService -> onPlayerDamaged).
+-- Healing writes the replicated Health attribute — the client's health bar and
+-- name tags read that attribute, not the Humanoid.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -49,23 +37,18 @@ end
 function RegenerationService.new(context: RegenerationContext)
 	return setmetatable({
 		context = context,
-		-- Ticks since the player last took health damage. Weak-keyed so
-		-- entries never outlive their player.
+		-- Ticks since last health damage; weak-keyed.
 		ticksSinceDamage = setmetatable({}, { __mode = "k" }) :: { [Player]: number },
 		playerRemovingConnection = nil :: RBXScriptConnection?,
 		started = false,
 	}, RegenerationService)
 end
 
--- Called by CombatService.dealDamage whenever a hit actually costs the
--- target health: the post-damage tick clock restarts at zero, so the first
--- regenerating tick is a full tick group later.
+-- Health damage restarts the clock at zero.
 function RegenerationService.onPlayerDamaged(self, player: Player)
 	self.ticksSinceDamage[player] = 0
 end
 
--- Spawning into a round starts the clock fresh (round boundaries also clear
--- every clock, but keeping the invariant local to the spawn is free).
 function RegenerationService.resetPlayer(self, player: Player)
 	self.ticksSinceDamage[player] = 0
 end
@@ -78,14 +61,9 @@ function RegenerationService.clearAll(self)
 	table.clear(self.ticksSinceDamage)
 end
 
--- One clock step (once per TICK_SECONDS): advance every alive player's
--- post-damage tick counter and heal them by the amount the current tick
--- group grants.
 function RegenerationService.tick(self)
 	local combatService = self.context.combatService
 	if combatService == nil or not combatService:isInRound() then
-		-- Outside a running round no counter is meaningful; dropping them
-		-- every step also guarantees each round starts from a clean clock.
 		self:clearAll()
 		return
 	end
@@ -111,9 +89,7 @@ function RegenerationService.start(self)
 		return
 	end
 	self.started = true
-	-- Drift-free one-second cadence: the next tick time is absolute, so a
-	-- late step (studio hitches, task scheduler granularity) self-corrects
-	-- instead of accumulating delay the way a plain task.wait(1) loop does.
+	-- Drift-free cadence: absolute next-tick time self-corrects after hitches.
 	task.spawn(function()
 		local nextTickTime = os.clock() + RegenerationRules.TICK_SECONDS
 		while self.started do

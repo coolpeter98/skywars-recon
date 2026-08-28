@@ -1,35 +1,12 @@
 --!strict
 
--- Server-authoritative power-ups (potions). The client plays the drink
--- animation and fires ActivatePowerUp (no payload) when it completes; this
--- service re-validates the drink against the player's actual held item,
--- consumes the potion, applies the effect, and drives the client's
--- replicated contract:
---
---   * `PowerUpToggled(powerUp, activated)` — the only source of truth for
---     the client's PowerUps store. The card countdown and the movement
---     modifiers (SpeedBoost x1.2, JumpBoost x1.65, Adrenaline x1.1) are
---     applied locally by PowerUpController when the toggle arrives.
---   * `PowerUpEffect(character)` broadcast — the floating potion bottle
---     above the drinker's head for 5 seconds.
---   * `CooldownUpdated` — the Adrenaline potion's 15-second cooldown (the
---     only potion whose shared item definition carries a Cooldown).
---
--- Effect rules (shared client data + observed behavior):
---   * SpeedBoost: 30s speed modifier (client-side).
---   * JumpBoost: 20s jump modifier (client-side).
---   * LifeSteal: 60s, ~3 health to the attacker on every validated hit
---     (hooked in CombatService.dealDamage).
---   * Shield: 60s, +50 shield health. Shield health always fully absorbs
---     exactly one hit regardless of how much remains (1 shield point still
---     blocks an entire hit) and is then removed; the power-up ends when its
---     shield is consumed.
---   * Adrenaline: 30s, +30 shield, speed modifier (client-side), 15s
---     cooldown between drinks.
---
--- Cleanup: eliminations, round resets, and players leaving clear all active
--- power-ups and fire PowerUpToggled(false) for each so the client's cards
--- and modifiers disappear with the effect.
+-- Authoritative potions. Client fires ActivatePowerUp after its drink animation;
+-- we re-validate everything anyway, then drive the client contract:
+-- PowerUpToggled (card + movement modifiers applied client-side),
+-- PowerUpEffect (floating bottle), CooldownUpdated (Adrenaline's 15s cooldown).
+-- Shield absorbs exactly one hit regardless of remaining shield (see
+-- CombatService); consuming it ends the Shield power-up early.
+-- Effect durations come from the shared power-ups data.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -56,8 +33,7 @@ type PowerUpDefinition = {
 local Items = ItemModule.Items :: { [string]: ItemDefinition }
 local PowerUpTable = PowerUps :: { [string]: PowerUpDefinition }
 
--- Shield health granted by the Shield potion; the shared HealthConstants cap
--- the Shield attribute at 50.
+-- Clamped at HealthConstants.MAX_SHIELD.
 local SHIELD_POWER_UP_SHIELD = 50
 
 type ActiveEntry = {
@@ -98,9 +74,6 @@ function PowerUpService.new(context: PowerUpContext)
 	}, PowerUpService)
 end
 
--- Entry point for the ActivatePowerUp remote. The client only fires after
--- its drink animation completes, but a hostile client could fire directly,
--- so every gate the client applies is re-checked here.
 function PowerUpService.activate(self, player: Player)
 	local combatService = self.context.combatService
 	if combatService == nil or not combatService:isInRound() then
@@ -127,8 +100,8 @@ function PowerUpService.activate(self, player: Player)
 	if inventoryService == nil or inventoryService:getItemQuantity(player, heldItemType) < 1 then
 		return
 	end
-	-- Server-side cooldown gate (only Adrenaline has one). The client-side
-	-- drink gate reads the same key via CooldownUpdated below.
+	-- Only Adrenaline has a cooldown; the client's drink gate reads the same
+	-- key via the CooldownUpdated replication below.
 	if combatService:isOnCooldown(player, heldItemType) then
 		return
 	end
@@ -168,8 +141,8 @@ function PowerUpService.applyPowerUp(self, player: Player, powerUpType: string)
 		playerState = {}
 		self.active[player] = playerState
 	end
-	-- Re-drinking refreshes the duration: the new generation invalidates the
-	-- previous expiry timer, so it can never cut a refreshed effect short.
+	-- Re-drinking bumps the generation so the previous expiry timer can't cut
+	-- the refreshed effect short.
 	local generation = (self.generations[player] or 0) + 1
 	self.generations[player] = generation
 	playerState[powerUpType] = { ExpiresAt = os.clock() + powerUp.Duration, Generation = generation }
@@ -201,10 +174,8 @@ function PowerUpService.endPowerUp(self, player: Player, powerUpType: string)
 	self.context.outbound:fire("PowerUpToggled", player, powerUpType, false)
 end
 
--- Called by CombatService when a hit is fully absorbed by shield health and
--- the shield drops to zero: the Shield power-up's single guaranteed block is
--- spent, so it ends early and the client's card disappears with the
--- protection. Other shield sources (e.g. Adrenaline) keep their own timers.
+-- Shield potion's single guaranteed block is spent, so it ends early.
+-- Other shield sources (Adrenaline) keep their own timers.
 function PowerUpService.onShieldConsumed(self, player: Player)
 	self:endPowerUp(player, "Shield")
 end
@@ -218,10 +189,8 @@ function PowerUpService.hasPowerUp(self, player: Player, powerUpType: string): b
 	return entry ~= nil and os.clock() < entry.ExpiresAt
 end
 
--- Removes every active power-up for one player: bumps the generation so all
--- pending expiry timers die, fires PowerUpToggled(false) for each effect so
--- the client's cards/modifiers disappear, and drops shield health (shield
--- only ever comes from power-ups).
+-- Generation bump kills all pending expiry timers; shield only comes from
+-- power-ups, so it drops to zero.
 function PowerUpService.clearPlayer(self, player: Player)
 	self.generations[player] = (self.generations[player] or 0) + 1
 	local playerState = self.active[player]

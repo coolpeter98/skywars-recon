@@ -1,19 +1,9 @@
 --!strict
--- ExperienceService
---
--- Tracks per-round combat statistics for XP awards and persists progression.
--- Custom (private) rounds award nothing: every hook checks the round session's
--- Kind before mutating state, and clearRound discards anything accumulated.
---
--- Hook points (all driven by the existing services):
---   * RoundService.startRound / spawnPlayer -> participation tracking
---   * CombatService.dealDamage               -> damage/assist history
---   * RoundService.eliminatePlayer           -> kills, assists, deaths
---   * RoundService.finishRound               -> award + replicate + save
---
--- An award updates the runtime profile (Experience, current season XP,
--- per-queue stats), replicates GameStats (the client end-screen payload) and
--- Profile, refreshes nametag level attributes, and queues a Drop save.
+-- Tracks per-round combat stats and awards XP at round end (public rounds
+-- only — every hook checks the session Kind; custom rounds award nothing).
+-- Awards update the runtime profile + per-queue stats, replicate GameStats
+-- (client end screen) and Profile, refresh nametag attributes, and queue a
+-- Drop save.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -59,7 +49,7 @@ function ExperienceService.new(context)
 	}, ExperienceService)
 end
 
--- Custom rounds (Kind == "Custom") must never grant XP or stats.
+-- Custom rounds must never grant XP or stats.
 function ExperienceService.isPublicRound(self: ExperienceService): boolean
 	local roundService = self.context.roundService
 	local session = roundService ~= nil and roundService.session or nil
@@ -96,7 +86,7 @@ function ExperienceService.onPlayerSpawned(self: ExperienceService, player: Play
 	end
 end
 
--- Every validated damaging hit updates damage totals and the assist window.
+-- Assists: any validated damaging hit refreshes the attacker's eligibility.
 function ExperienceService.onDamage(self: ExperienceService, attacker: Player?, target: Player, damage: number)
 	if not self:isPublicRound() or damage <= 0 then
 		return
@@ -114,9 +104,8 @@ function ExperienceService.onDamage(self: ExperienceService, attacker: Player?, 
 	end
 end
 
--- An elimination credits the killer and anyone who damaged the victim inside
--- the assist window (excluding the killer). Respawn-mode eliminations count
--- as kills/deaths too — they are still combat outcomes.
+-- Credits the killer plus anyone who damaged the victim within the assist
+-- window. Respawn-mode eliminations count too — still combat outcomes.
 function ExperienceService.onElimination(self: ExperienceService, player: Player, killer: Player?)
 	if not self:isPublicRound() then
 		return
@@ -137,7 +126,7 @@ function ExperienceService.onElimination(self: ExperienceService, player: Player
 	end
 end
 
--- The production queue id backing a game mode (for per-queue profile stats).
+-- Production queue id backing a game mode (keys per-queue profile stats).
 function ExperienceService.getQueueId(self: ExperienceService, gameMode: string): string?
 	local definition = GameModes[gameMode]
 	if definition == nil then
@@ -172,8 +161,7 @@ function ExperienceService.awardPlayer(
 
 	profile.Experience = toNumber(profile.Experience, 0) + total
 
-	-- Season pass XP mirrors match XP (reconstructed; the original rate was
-	-- lost with the server code).
+	-- Season pass XP mirrors match XP (reconstructed; original rate lost).
 	local season = profile.Season
 	if type(season) == "table" and type(season.SeasonData) == "table" then
 		local seasonEntry = season.SeasonData[CurrentSeason]
@@ -199,8 +187,7 @@ function ExperienceService.awardPlayer(
 		queueStats.DamageTaken = toNumber(queueStats.DamageTaken, 0) + stats.DamageTaken
 	end
 
-	-- The client end screen reads GameStats for the XP breakdown and the
-	-- Profile for the updated level bar.
+	-- GameStats drives the client end screen; Profile drives the level bar.
 	self.context.outbound:setValue(player, "GameStats", {
 		Wins = if didWin then 1 else 0,
 		Kills = stats.Kills,
@@ -223,9 +210,9 @@ function ExperienceService.awardPlayer(
 	end
 end
 
--- Round end. `placements` mirrors the GameResult payload: index 1 is the
--- winners array, index 2 the eliminated players in reverse elimination order
--- (first eliminated last), so its offset + 1 is each player's finish position.
+-- `placements` mirrors the GameResult payload: index 1 is the winners array,
+-- index 2 the eliminated players in reverse elimination order, so offset + 1
+-- is each player's finish position.
 function ExperienceService.onRoundEnded(self: ExperienceService, winners: { Player }, placements: { { Player } })
 	if not self:isPublicRound() then
 		self:clearRound()

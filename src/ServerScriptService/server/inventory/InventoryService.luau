@@ -15,11 +15,8 @@ local RigUtil = require(ReplicatedStorage.TS.util["rig-util"]).RigUtil
 local ItemDropUtil = require(ReplicatedStorage.TS.item["item-drop-util"]).ItemDropUtil
 local RobloxSound = require(ReplicatedStorage.TS.asset.roblox["roblox-sound"]).RobloxSound
 
--- The original game plays ONE chest animation: a single swing to the
--- fully-open pose (~110 degrees), then the chest never closes. That is the
--- PRODUCTION CHEST_OPEN asset; the recovered "studio" CHEST_OPEN variant only
--- swings the lid partway (~45 degrees), so the server always uses the
--- production id (a user-owned re-upload, so it also works in Studio).
+-- The production chest-open asset swings fully open (~110 deg); the recovered
+-- "studio" variant only goes ~45 deg. The original chests never close.
 local CHEST_OPEN_ANIMATION_ID = "rbxassetid://140119704385533"
 
 type InventoryItem = {
@@ -256,10 +253,9 @@ local function updatePlayerInventory(
 		if currentScore ~= nil and newScore ~= nil and newScore <= currentScore then
 			return updateInventoryPreferMain(inventory, itemType, quantity)
 		end
-		-- A previously displaced lower-tier tool may be sitting in the main
-		-- inventory after its upgrade was deposited into a chest. If the
-		-- hotbar now has room, put the reacquired upgrade there instead of
-		-- replacing the lower-tier tool in its main-inventory slot.
+		-- A displaced lower-tier tool may be sitting in main storage (its upgrade
+		-- was deposited into a chest); if the hotbar has room, prefer that over
+		-- replacing the lower-tier tool in place.
 		if preferOpenHotbarForUpgrade and currentItem.Slot >= HOTBAR_SIZE then
 			local emptyHotbarSlot = findEmptySlotInRange(inventory, 0, math.min(HOTBAR_SIZE, inventory.Size) - 1)
 			if emptyHotbarSlot ~= nil then
@@ -675,9 +671,8 @@ function InventoryService.createWorldDrop(
 		warn(("[Server] Failed to create item drop %s: %s"):format(itemType, tostring(drop)))
 		return nil
 	end
-	-- The invisible primary hitbox is the drop's physical body: it must collide
-	-- with the arena so unanchored loot settles on the floor. Render descendants
-	-- stay non-solid, and CanTouch remains enabled for the immediate pickup path.
+	-- The primary hitbox must collide so unanchored loot settles on the floor;
+	-- render parts stay non-solid but CanTouch stays on for touch pickup.
 	for _, descendant in drop:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.CanCollide = descendant == drop.PrimaryPart
@@ -725,9 +720,8 @@ end
 function InventoryService.dropHeldItem(self, player: Player): boolean
 	local eggWarsService = self.context.eggWarsService
 	local runtimeContext = self.context.runtimeContext:get()
-	-- Egg Wars disables manual item dropping for the whole match lifecycle,
-	-- including its pregame and cage phases. Generator-created world drops are
-	-- separate and continue to use createWorldDrop directly.
+	-- Egg Wars disables manual dropping for the entire match lifecycle
+	-- (pregame/cages included); generator drops are unaffected.
 	if eggWarsService ~= nil and eggWarsService:isGameMode(runtimeContext.GameMode) then
 		return false
 	end
@@ -1000,11 +994,9 @@ function InventoryService.sendChest(self, player: Player, chest: Model, shouldOp
 	self.context.outbound:fire("ChestUpdated", player, chest, serializeContents(state.Contents), shouldOpen)
 end
 
--- Plays the chest's single open animation once, then freezes the track on
--- its final frame so the chest stays fully open in 3D forever (the original
--- game never closes chests). The chest models ship with the
--- AnimationController/Animator rig for exactly this server-driven playback;
--- the client only checks that the rig exists.
+-- One open animation, then freeze the track on its last frame — chests never
+-- close. The shipped chest models carry the AnimationController rig for this
+-- server-driven playback; the client only checks that the rig exists.
 local function playChestOpen(self, chest: Model)
 	-- The client plays no chest audio of its own; the recovered chest-open
 	-- sound goes through the SoundPlayed pipeline at the chest's position.
@@ -1028,10 +1020,8 @@ local function playChestOpen(self, chest: Model)
 	local track = animator:LoadAnimation(animation)
 	track:Play()
 
-	-- The server streams animation content asynchronously: Length reports 0
-	-- until the asset loads and the queued play starts, so wait for the real
-	-- length and then freeze just before the final frame (a stopped track
-	-- would snap the lid back closed).
+		-- Length is 0 until the asset streams in; freeze just before the final
+		-- frame (stopping the track snaps the lid closed).
 	task.spawn(function()
 		local waited = 0
 		while track.Length <= 0 and waited < 5 do
@@ -1158,11 +1148,9 @@ function InventoryService.transferChestItem(
 		end
 		self:replicateItemChange(player, itemType, -quantity - 1)
 	elseif reacquiredUpgrade ~= nil then
-		-- The recovered client upgrades a lower-tier tool in place. When that
-		-- lower tier is in main storage, replay the delta as remove/add/restore:
-		-- with no competing tool present, the client puts the reacquired upgrade
-		-- into its first open hotbar slot, then restores the lower tiers at the
-		-- end of main inventory. This preserves every unrelated client-local slot.
+		-- The client upgrades a lower-tier tool in place; replay the delta as
+		-- remove/add/restore so the upgrade lands in the first open hotbar slot
+		-- while client-local slot assignments elsewhere are preserved.
 		for _, lowerTierItem in reacquiredUpgrade.LowerTierItems do
 			self:replicateItemChange(player, lowerTierItem.Type, -lowerTierItem.Quantity)
 		end

@@ -1,17 +1,9 @@
 --!strict
 -- BlockGeometry — pure voxel math for mining/exploding greedy-meshed block
--- geometry. No Roblox dependencies, so the whole module can be unit-tested
--- under Lune.
---
--- The recovered maps store runs of same-material block cells as one
--- axis-aligned Part (greedy meshing); only the exposed faces carry textures
--- (face culling), and faces whose material lacks a texture for that
--- orientation stay plain (measured: the original Airport map has 723
--- partially-covered textured faces — full-face overdraw is the map's own
--- visual style).
---
--- Cell coordinates are plain tables { X: number, Y: number, Z: number }
--- (Roblox Vector3 values satisfy the same shape, so callers may pass either).
+-- geometry. No Roblox dependencies, so the module is unit-testable under
+-- Lune. The recovered maps store runs of same-material cells as one
+-- axis-aligned Part with culled faces. Cell coordinates are plain
+-- { X, Y, Z } tables (Vector3s satisfy the same shape).
 
 export type Cell = { X: number, Y: number, Z: number }
 
@@ -33,10 +25,8 @@ export type BlockGeometry = {
 
 local BlockGeometry: BlockGeometry = {}
 
--- Decomposes `range` minus the inner box [innerMin..innerMax] into up to six
--- axis-aligned boxes (the standard box-minus-box slab decomposition). The
--- inner box must lie within the range; a single-cell inner box gives the
--- classic box-minus-cell decomposition.
+-- Standard box-minus-box slab decomposition; the inner box must lie within
+-- the range.
 function BlockGeometry.decomposeBoxMinusBox(range: BoxRange, innerMin: Cell, innerMax: Cell): { BoxRange }
 	local boxes: { BoxRange } = {}
 	if innerMin.X - 1 >= range.minX then

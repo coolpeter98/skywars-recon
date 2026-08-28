@@ -1,13 +1,8 @@
 --!strict
 
--- Server-side kill logging. Every combat elimination — player kills (melee,
--- bow, fall, void) and entity kills (eggs) — is printed as a structured
--- `[KillLog]` line to the server console and appended to a bounded in-memory
--- history so other server code can inspect recent kills.
---
--- The module is pure Luau (no Roblox API): callers build the entry from
--- their Roblox objects; this module only formats, prints, and remembers it.
--- That keeps it unit-testable under Lune (tools/test_kill_log.luau).
+-- Formats player/entity kills as one structured `[KillLog]` console line and
+-- keeps a bounded in-memory history. Pure Luau (no Roblox API) so it can be
+-- unit-tested under Lune.
 
 local MAX_HISTORY = 500
 

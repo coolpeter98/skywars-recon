@@ -32,7 +32,7 @@ type WorldDropOptions = {
 
 local GAME_MODE = "EggWarsQuads"
 local TEAM_IDS = { "Red", "Lime", "Cyan", "Yellow" }
--- Live-server automatic generator-grant radius, in studs.
+	-- Live-server automatic generator-grant radius (studs).
 local GENERATOR_PICKUP_RANGE = 5
 local GENERATOR_LOOP_STEP = 0.05
 local RESPAWN_DELAY = 6
@@ -299,8 +299,8 @@ function EggWarsService.onPlayerDefeated(self, player: Player, killer: Player?)
 		return
 	end
 
-	-- Egg Wars awards every carried currency directly to the killer. Weapons,
-	-- blocks, armour, and utility items are discarded by the normal death clear.
+	-- Currency goes straight to the killer; everything else is discarded by the
+	-- normal death clear.
 	for _, currency in Currencies do
 		local quantity = self.context.inventoryService:getItemQuantity(player, currency.ItemType)
 		if quantity > 0 then
@@ -392,9 +392,9 @@ function EggWarsService.onEggEliminated(self, egg: Model, player: Player): boole
 		deathTrack:Play()
 	end
 	self.context.roundService:replicateAll()
-	-- Keep the defeated egg model until round cleanup. EggComponent owns the
-	-- island keypoint and changes it to IconDeadId on EggEliminated; destroying
-	-- the model would also destroy that component and remove the dead marker.
+	-- Defeated egg model stays until round cleanup: EggComponent owns the island
+	-- keypoint and swaps to the dead icon on EggEliminated; destroying the model
+	-- destroys that component too.
 	return true
 end
 
@@ -479,9 +479,8 @@ function EggWarsService.emitGeneratorDrop(self, generator: GeneratorData, itemTy
 	if dropPosition == nil then
 		return
 	end
-	-- Both automatic grants and the physical fallback originate at the machine
-	-- root. Adding an arbitrary height here makes the coin visibly appear above
-	-- the generator and can leave it inaccessible on uneven map geometry.
+	-- Grants and the physical fallback both originate at the machine root; any
+	-- extra height can leave the coin inaccessible on uneven geometry.
 	local nearbyPlayers = self:getNearbyPlayers(generator.Model:GetPivot().Position)
 	local generatorShare = isGeneratorShared(itemType)
 	local granted = false
@@ -613,9 +612,8 @@ function EggWarsService.startHealingLoop(self)
 	end)
 end
 
--- Called exactly when the lobby countdown ends and the cage phase begins.
--- This is intentionally later than MapService.load(), matching the live map:
--- no WorldData-generated objects exist while players wait in the pre-game lobby.
+-- Runs exactly at the cage transition, later than MapService.load(): the live
+-- map has no WorldData-generated objects during the pre-game lobby.
 function EggWarsService.prepareRound(self, gameMode: string, map: Model): boolean
 	if gameMode ~= GAME_MODE then
 		return true

@@ -218,9 +218,9 @@ function RoundService.replicatePlayer(self, player: Player)
 	self.context.outbound:setValue(player, "Players", aliveUserIds)
 	self.context.outbound:setValue(player, "GameState", self.roundState)
 	self.context.outbound:setValue(player, "GameStateChangeTime", self.gameStateChangeTime)
-	-- Inventory slot rearrangements are client-local. Starter inventory is sent
-	-- once by spawnPlayer; repeating a full snapshot here would overwrite the
-	-- player's chosen layout whenever unrelated round state is replicated.
+	-- Inventory rearrangement is client-local; sendGameCurrency only. Starter
+	-- inventory is sent once in spawnPlayer, so a full snapshot here would
+	-- overwrite the player's chosen slot layout.
 	local playerSession = self.context.playerSessions:get(player)
 	if playerSession ~= nil then
 		self.context.outbound:sendGameCurrency(player, playerSession.gameCurrency)
@@ -330,9 +330,8 @@ function RoundService.spawnPlayer(self, player: Player, teamId: string, reloadCh
 	for _, itemType in spawnArmour do
 		self.context.inventoryService:equipArmour(player, itemType)
 	end
-	-- Send one authoritative post-spawn snapshot after starter items and armour
-	-- have settled. Later changes use deltas so client-local slot ordering stays
-	-- intact throughout the round.
+	-- One authoritative snapshot after starter items/armour settle; later
+	-- changes go as deltas so client-local slot ordering survives the round.
 	local playerSession = self.context.playerSessions:require(player)
 	self.context.outbound:sendInventory(player, playerSession.inventory)
 	self.context.outbound:sendActiveSlot(player, playerSession.activeSlot)
@@ -378,9 +377,8 @@ function RoundService.initializePlayer(self, player: Player)
 	if player.Parent ~= Players or self.context.playerSessions:get(player) == nil or session == nil then
 		return
 	end
-	-- PlayerSessions schedules its first bootstrap (including @@INIT) as soon
-	-- as the session exists. Yield once so that reset cannot erase the game
-	-- values replicated below.
+	-- PlayerSessions fires its first bootstrap (@@INIT) as soon as the session
+	-- exists; yield once so it can't erase the values replicated below.
 	task.wait()
 	if player.Parent ~= Players or self.session ~= session then
 		return
@@ -471,10 +469,8 @@ function RoundService.startRound(self): boolean
 	self.context.blockWorldService:rebuild(self.loadedMap.Model)
 	self.gameStateChangeTime = os.time()
 	self:replicateAll()
-	-- Map loading/rebuild is synchronous. Yield after publishing the ready
-	-- Pregame snapshot so CustomGame.InGame reaches the lifecycle controller
-	-- and GameController mounts before the one-shot countdown event below.
-	-- Public matches benefit from the same client-ready boundary.
+	-- Map load/rebuild is synchronous; yield so clients receive the ready
+	-- Pregame snapshot and mount the game UI before the countdown events fire.
 	task.wait()
 	if not self.running or self.roundId ~= roundId or self.session ~= session or self.roundState ~= "Pregame" then
 		self.roundActive = false
@@ -811,9 +807,8 @@ function RoundService.eliminatePlayer(self, player: Player, damageType: string, 
 			self:replicateAll()
 		end)
 	end
-	-- A player waiting on a mode respawn still keeps their team alive. Running the
-	-- winner check here would immediately end a one-team Studio round before the
-	-- respawn can complete.
+	-- Respawn-awaiting players keep their team alive; checking the winner
+	-- here would end a one-team round before the respawn lands.
 	if not willRespawn then
 		self:checkForWinner()
 	end
@@ -841,8 +836,7 @@ function RoundService.finishRound(self, winners: { Player })
 	if #self.eliminatedPlayers > 0 then
 		table.insert(placements, table.clone(self.eliminatedPlayers))
 	end
-	-- Awards and replicate XP before the GameResult event opens the end
-	-- screen, so the GameStats/Profile updates arrive first.
+	-- Award XP and replicate before GameResult so GameStats/Profile land first.
 	local experienceService = self.context.experienceService
 	if experienceService ~= nil then
 		experienceService:onRoundEnded(winners, placements)

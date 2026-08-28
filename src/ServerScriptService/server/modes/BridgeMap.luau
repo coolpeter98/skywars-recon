@@ -1,9 +1,8 @@
 --!strict
 
--- Bridge maps ship with authored geometry and empty runtime folders. This
--- module converts WorldData.GameSpawn, WorldData.Portal, WorldData.BuildBounds,
--- and WorldData.Spawn into the runtime objects observed in the populated
--- Castle client snapshot.
+-- Bridge maps ship authored geometry plus empty runtime folders. This converts
+-- WorldData (GameSpawn/Portal/BuildBounds/Spawn) into the runtime objects, as
+-- observed in the populated Castle client snapshot.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 

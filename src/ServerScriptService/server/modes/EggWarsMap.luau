@@ -1,10 +1,8 @@
 --!strict
 
--- Converts the authored Egg Wars WorldData markers into the runtime arena.
--- The supplied maps intentionally contain empty SpawnLocations, Generators,
--- Shops, and Chests folders. The original server populated those folders only
--- when players left the pre-game lobby for their cages; EggWarsService calls
--- populate() at that same boundary.
+-- Converts authored Egg Wars WorldData markers into the runtime arena. The
+-- maps ship empty SpawnLocations/Generators/Shops/Chests folders; the original
+-- server populated them at the cage transition, which is when populate() runs.
 
 local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
@@ -92,9 +90,8 @@ local function selectExtreme(
 	return selected
 end
 
--- Egg Wars maps are authored as four cardinal bases, but the child insertion
--- order differs between maps. Spatial assignment reproduces the populated
--- Phoenix Gate mapping and remains stable for Construction and Tundra.
+-- Child insertion order differs between maps; spatial assignment reproduces
+-- the populated Phoenix Gate mapping and stays stable for the other maps.
 local function readCardinalCFrames(folder: Folder?): { [string]: CFrame }?
 	local values = collectCFrames(folder)
 	if #values ~= 4 then
@@ -239,8 +236,8 @@ local function createEggsAndShims(eggCFrames: { [string]: CFrame }, blockContain
 		shim.Anchored = true
 		shim:SetAttribute(GENERATED_SHIM_ATTRIBUTE, true)
 		shim.Parent = blockContainer
-		-- MeleeController temporarily shrinks tagged shims while raycasting so
-		-- the egg remains targetable from the sides, then restores their size.
+		-- MeleeController shrinks tagged shims while raycasting so the egg stays
+		-- targetable from the sides, then restores their size.
 		CollectionService:AddTag(shim, "shim")
 	end
 	return eggsByTeam
@@ -282,9 +279,8 @@ local function createGenerators(
 			for _, marker in tierFolder:GetChildren() do
 				if marker:IsA("CFrameValue") then
 					local generator = template:Clone()
-					-- The populated Phoenix Gate snapshot makes every part of the
-					-- generator non-solid. In particular, the invisible RootPart must
-					-- not leave a collision box in the middle of the machine.
+					-- The populated snapshot makes every generator part non-solid; the
+					-- invisible RootPart must not leave a collision box mid-machine.
 					for _, descendant in generator:GetDescendants() do
 						if descendant:IsA("BasePart") then
 							descendant.CanCollide = false
@@ -336,9 +332,9 @@ local function createPrefab(
 	if name ~= nil then
 		model.Name = name
 	end
-	-- Rigged shop prefabs are unanchored in ReplicatedStorage and otherwise
-	-- fall out of the arena after they are cloned. Every spawned shop-rig part
-	-- is anchored in the populated Phoenix Gate save.
+	-- Rigged shop prefabs are unanchored in ReplicatedStorage and would fall
+	-- out of the arena; every spawned shop-rig part is anchored (as in the
+	-- populated Phoenix Gate save).
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = true
@@ -346,10 +342,8 @@ local function createPrefab(
 	end
 	local targetCFrame = baseCFrame * (prefabData.Offset or CFrame.new())
 	if groundAligned then
-		-- Static scene models are authored around a ground plane rather than a
-		-- rig root. The populated Phoenix Gate snapshot places both the house
-		-- and cart with their lowest geometry on the marker plane; PivotTo at
-		-- the marker instead buries them by roughly four and two blocks.
+		-- Static scene models are authored around a ground plane, not a rig root;
+		-- PivotTo at the marker buries them by ~4 and ~2 blocks respectively.
 		local boundingCFrame, boundingSize = model:GetBoundingBox()
 		local heightBelowPivot = model:GetPivot().Position.Y - (boundingCFrame.Position.Y - boundingSize.Y / 2)
 		local position = targetCFrame.Position
@@ -389,9 +383,8 @@ local function createShops(worldData: Folder, destination: Folder): boolean
 			end
 		end
 	end
-	-- The recovered map contains QuickShop markers, but the populated live
-	-- snapshot creates neither models nor prompts from them. Preserve that
-	-- observed server behavior instead of inventing a third shop scene.
+	-- The recovered map has QuickShop markers, but the populated live snapshot
+	-- creates nothing from them; preserve that behavior.
 	return true
 end
 

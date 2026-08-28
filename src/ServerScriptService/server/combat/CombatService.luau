@@ -1,50 +1,14 @@
 --!strict
 
--- Server-authoritative combat. The client picks *who* it swung at (mouse /
--- mobile overlap checks) and fires MeleeStrike(player) or
--- MeleeStrikeEntity(model); this service re-validates everything that matters
--- server-side and applies the result through the client's replicated combat
--- contract:
---
---   * `Health` / `Shield` Player attributes — the health bar and name tags
---     read those attributes, not the Humanoid.
---   * `DamageDealt` broadcast — damage indicators + hit highlight.
---   * `DamageImpulse` — knockback, applied by PlayerVelocityController.
---   * Elimination via RoundService, which publishes `PlayerKilled`
---     (kill feed) and `PlayerEliminated` (spectating / round end).
---
--- Character combat hitboxes: the client's melee raycast is a WHITELIST of
--- parts named "Hitbox" (and "ProjectileHitbox" for ranged combat) on other
--- players' characters, plus tagged entities and placed blocks. This service
--- welds a transparent, massless hitbox part onto every character so the
--- client can actually find players to swing at.
---
--- Universal pieces every damage source shares:
---   * `dealDamage` — the single damage pipeline (armour, shield, health,
---     indicator, elimination, kill credit, friendly-fire) used by melee,
---     bows, and any future damage type.
---   * `getKnockback` — the single knockback system. Callers pass a direction
---     (attacker -> target, or a projectile's velocity); strength scales with
---     the raw hit damage so stronger weapons knock harder, and the horizontal
---     flattening, upward bias, and per-damage factors live here, so melee and
---     bows behave identically.
---   * The cooldown registry — one registry for every combat action. Bow
---     cooldowns replicate through CooldownUpdated for the bow UI; extra keys
---     (e.g. "Melee") are ignored by the client.
---
--- Melee validation: attacker is alive, in a running round, and holding a
--- melee item; the strike respects the shared damage cooldown, maximum melee
--- range (the client's loosest desktop bound plus latency slack), line of
--- sight, and friendly-fire rules. Damage is reduced by equipped armour
--- (additive DamageMitigation per piece, matching the client). Shield health
--- fully absorbs exactly one hit no matter how much remains (1 shield point
--- still blocks a whole hit) and is then removed; the Shield power-up ends
--- when its shield is consumed. While the attacker has LifeSteal active,
--- every validated damaging hit heals them for ~3 health. Any hit that
--- costs the target health restarts their natural-regeneration tick clock
--- (RegenerationService).
---
--- Bow hits are routed through the same damage path by ProjectileService.
+-- Server-authoritative combat. Client fires MeleeStrike/MeleeStrikeEntity; we
+-- re-validate and apply results via the client's replicated contract:
+-- Health/Shield attributes (UI reads those, not the Humanoid), DamageDealt,
+-- DamageImpulse (applied by PlayerVelocityController), elimination via
+-- RoundService (PlayerKilled + PlayerEliminated).
+-- The client's melee raycast only hits parts named "Hitbox"/"ProjectileHitbox"
+-- found via Character:FindFirstChild, so every character gets welded hitboxes.
+-- Shield absorbs exactly one hit regardless of remaining shield. Knockback is
+-- fixed per damage type (client never ties it to damage).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -68,35 +32,25 @@ local DAMAGE_TYPE_MELEE = "Melee"
 local DAMAGE_TYPE_BOW = "Bow"
 local DAMAGE_TYPE_FALL = "Fall"
 
--- The client accepts strikes up to MAXIMUM_HIT_RANGE_BLOCKS * 3 (its desktop
--- raycast bound); the slack covers network latency between the client-side
--- check and the server.
+-- Client accepts strikes up to MAXIMUM_HIT_RANGE_BLOCKS * 3; slack covers latency.
 local MAX_MELEE_RANGE = MeleeConstants.MAXIMUM_HIT_RANGE_BLOCKS * 3 + 1.5
--- The client's PlayerVelocityController scales the DamageImpulse vector by
--- (AssemblyMass / 14.332) before applying it, so the resulting velocity
--- change is `strength / 14.332` studs/s regardless of mass. Knockback is
--- FIXED per damage type instead of scaled by hit damage: the recovered
--- client never ties knockback magnitude to damage (DamageImpulse is a bare
--- Vector3, sword definitions carry only Damage, and no client code derives
--- knockback from damage), so every hit shoves the same. Values tuned by feel
--- with the KnockbackTest harness (kb.shove(80) / kb.bow(80)): melee
--- strength 80 * 8 = 640 (~44.7 studs/s), projectiles 80 * 10 = 800
--- (~55.8 studs/s), upward bias 0.6.
+-- Client's PlayerVelocityController divides by assembly mass * 14.332, so
+-- velocity change is strength / 14.332 studs/s. Fixed per damage type — the
+-- recovered client never scales knockback by hit damage. Tuned via KnockbackTest:
+-- melee 150 * 8 = 1200 (~83.8 studs/s), projectiles 150 * 10 = 1500 (~104.7 studs/s).
 local KNOCKBACK_BASE = 150
 local MELEE_KNOCKBACK_MULTIPLIER = 8
 local PROJECTILE_KNOCKBACK_MULTIPLIER = 10
 local KNOCKBACK_UPWARD_BIAS = 0.6
 local ARMOUR_TYPES = { "Helmet", "Chestplate", "Leggings" }
 
--- Health restored to an attacker per validated damaging hit while the
--- LifeSteal power-up is active.
+-- Healed per damaging hit while LifeSteal is active.
 local LIFESTEAL_HEAL_PER_HIT = 3
 
--- How long after a validated hit an environmental elimination (Void/Fall)
--- still credits that attacker as the killer (combat tagging).
+-- Window in which an environmental elimination (Void/Fall) credits the last hitter.
 local LAST_ATTACK_CREDIT_SECONDS = 10
 
--- The melee raycast whitelist looks up these exact part names on characters.
+-- Client's melee raycast whitelist looks up these exact part names.
 type HitboxConfig = {
 	Name: string,
 	Size: Vector3,
@@ -116,13 +70,11 @@ local CHARACTER_HITBOXES: { HitboxConfig } = {
 	},
 }
 
--- CharacterAdded can race character replacement during Studio/custom-game
--- transitions. Reconcile periodically as a backstop so a missed event, a
--- removed hitbox, or a broken weld cannot leave melee disabled indefinitely.
+-- Backstop for missed CharacterAdded events (races during Studio/custom-game
+-- transitions) and removed/broken hitboxes.
 local HITBOX_RECONCILE_SECONDS = 0.5
 
--- The line-of-sight ray stops this far short of the target root so a wall or
--- floor directly behind the target never blocks the strike.
+-- Stops short of the target root so terrain directly behind it never blocks.
 local LINE_OF_SIGHT_MARGIN = 1.5
 
 type CombatContext = {
@@ -188,7 +140,6 @@ function CombatService:isInRound(): boolean
 	return roundService ~= nil and roundService:isInRound()
 end
 
--- Welds one of the client's expected combat hitboxes onto a character.
 function CombatService:attachHitbox(character: Model, config: HitboxConfig)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if root == nil or not root:IsA("BasePart") then
@@ -226,10 +177,8 @@ function CombatService:attachHitbox(character: Model, config: HitboxConfig)
 	hitbox.CFrame = root.CFrame * config.Offset
 	hitbox.Parent = character
 
-	-- Use the classic Weld joint: WeldConstraint.C0/C1 are NOT scriptable in
-	-- current Roblox builds, while Weld.C0 is. The part stays a direct child
-	-- of the character model because the client's melee raycast looks it up
-	-- with Character:FindFirstChild("Hitbox").
+	-- WeldConstraint.C0 is not scriptable; classic Weld is. Hitbox must stay a
+	-- direct child of the character (client uses Character:FindFirstChild).
 	local weld = Instance.new("Weld")
 	weld.Name = "CombatHitboxWeld"
 	weld.Part0 = root
@@ -238,7 +187,6 @@ function CombatService:attachHitbox(character: Model, config: HitboxConfig)
 	weld.Parent = hitbox
 end
 
--- Every character gets the combat hitboxes the client's raycasts expect.
 function CombatService:ensureHitboxes(character: Model)
 	for _, config in CHARACTER_HITBOXES do
 		self:attachHitbox(character, config)
@@ -273,8 +221,7 @@ function CombatService:reconcileHitboxes()
 	end
 end
 
--- Returns (root, meleeDamage, heldItemType) when the attacker is allowed to
--- swing a melee weapon right now, or nil.
+-- Returns (root, meleeDamage, heldItemType) if the attacker may swing now, else nil.
 function CombatService:isValidAttacker(player: Player): (BasePart?, number?, string?)
 	if not self:isInRound() then
 		return nil
@@ -301,8 +248,7 @@ function CombatService:isValidAttacker(player: Player): (BasePart?, number?, str
 	return root, math.max(0, itemDefinition.Melee.Damage), heldItemType
 end
 
--- Shared melee gate for player and entity strikes: round state, attacker
--- validity, and the melee cooldown. Callers apply the cooldown themselves
+-- Shared melee gate for player and entity strikes; callers set the cooldown
 -- once the hit is confirmed.
 function CombatService:canMeleeAttack(player: Player): (BasePart?, number?)
 	if self:isOnCooldown(player, DAMAGE_TYPE_MELEE) then
@@ -320,9 +266,8 @@ function CombatService:isOnCooldown(player: Player, key: string): boolean
 	return expireTime ~= nil and os.clock() < expireTime
 end
 
--- One cooldown registry for every combat action. When `replicate` is set the
--- client learns about the cooldown through CooldownUpdated (the bow UI reads
--- the "Bow" key; keys the client does not care about are simply stored).
+-- `replicate` pushes the cooldown to the client via CooldownUpdated (bow UI
+-- reads the "Bow" key; other keys are stored but ignored client-side).
 function CombatService:setCooldown(player: Player, key: string, duration: number, replicate: boolean?)
 	local playerCooldowns = self.cooldowns[player]
 	if playerCooldowns == nil then
@@ -359,10 +304,6 @@ function CombatService:isFriendlyFire(attacker: Player?, target: Player): boolea
 	return type(attackerTeam) == "string" and attackerTeam ~= "" and attackerTeam == targetTeam
 end
 
--- Anything between the two roots (other than the two characters themselves)
--- blocks the strike, mirroring the client's visibility checks. The ray stops
--- a margin short of the target root so terrain right behind the target never
--- rejects a clean hit.
 function CombatService:hasLineOfSight(attackerRoot: BasePart, targetRoot: BasePart): boolean
 	local direction = targetRoot.Position - attackerRoot.Position
 	local distance = direction.Magnitude
@@ -385,7 +326,7 @@ function CombatService:hasLineOfSight(attackerRoot: BasePart, targetRoot: BasePa
 	return Workspace:Raycast(attackerRoot.Position, direction.Unit * rayLength, raycastParams) == nil
 end
 
--- Additive per-piece mitigation, matching ArmourController on the client.
+-- Additive per-piece mitigation, matching the client's ArmourController.
 function CombatService:getArmourMitigation(player: Player): number
 	local session = self.context.playerSessions:get(player)
 	if session == nil then
@@ -405,12 +346,8 @@ function CombatService:getArmourMitigation(player: Player): number
 	return math.clamp(totalMitigation, 0, 1)
 end
 
--- Universal knockback impulse. Every damage source funnels its knockback
--- through here so direction flattening, the upward bias, and constants behave
--- identically. `direction` points from the attacker toward the target (melee:
--- attacker root -> target root; projectiles: travel velocity). `strength`
--- equals rawDamage * the source's per-damage factor; the client scales the
--- impulse by the assembly mass itself.
+-- `direction`: attacker -> target root for melee, travel velocity for projectiles.
+-- Client scales the impulse by assembly mass itself.
 function CombatService:getKnockback(direction: Vector3, strength: number): Vector3
 	local horizontalDirection = direction * Vector3.new(1, 0, 1)
 	if horizontalDirection.Magnitude < 0.001 then
@@ -421,36 +358,25 @@ function CombatService:getKnockback(direction: Vector3, strength: number): Vecto
 	return (horizontalDirection + Vector3.new(0, KNOCKBACK_UPWARD_BIAS, 0)).Unit * strength
 end
 
--- The fixed impulse every projectile hit delivers. Explosion knockback
--- (Capybara/Dynamite) reuses this so every projectile source shoves the same.
+-- Explosion knockback reuses the projectile impulse; explosions don't add their own.
 function CombatService:getProjectileKnockback(direction: Vector3): Vector3
 	return self:getKnockback(direction, KNOCKBACK_BASE * PROJECTILE_KNOCKBACK_MULTIPLIER)
 end
 
--- Damage without knockback, for sources that apply their own impulse (e.g.
--- explosions shove through getProjectileKnockback). "Bow" keeps the shooter's
--- hit-marker sound and stays inside the client's DamageDealt type whitelist
--- (Melee/Bow/Fall/Void).
+-- "Bow" keeps the shooter's hit-marker sound and fits the client's
+-- DamageDealt type whitelist (Melee/Bow/Fall/Void).
 function CombatService:dealExplosionDamage(attacker: Player?, target: Player, damage: number)
 	self:dealDamage(attacker, target, DAMAGE_TYPE_BOW, damage, nil)
 end
 
--- Fall damage, computed from block levels by FallDamageService (the block
--- the player fell from compared with the block they landed on — the game's
--- own rule, no velocity involved). No attacker and no knockback; the shared
--- pipeline still applies armour mitigation and all-or-nothing shield
--- absorption, broadcasts the DamageDealt indicator as "Fall", resets the
--- target's regeneration clock, and elimination reuses the existing
--- last-attacker credit (a knock off a cliff logs to the hitter).
+-- Fall damage (block-level comparison per FallDamageService). No attacker or
+-- knockback; elimination still credits the last hitter (knock off a cliff).
 function CombatService:dealFallDamage(target: Player, damage: number)
 	self:dealDamage(nil, target, DAMAGE_TYPE_FALL, damage, nil)
 end
 
--- Shared damage application for every damage source. Applies friendly-fire,
--- armour and shield, updates the replicated Health/Shield attributes,
--- broadcasts the DamageDealt indicator, sends the knockback impulse built by
--- the universal knockback system, and eliminates the target (with kill
--- credit) when health reaches zero.
+-- Single damage pipeline: friendly fire, armour/shield, Health/Shield
+-- attributes, DamageDealt indicator, knockback impulse, elimination.
 function CombatService:dealDamage(
 	attacker: Player?,
 	target: Player,
@@ -479,10 +405,8 @@ function CombatService:dealDamage(
 		damage = eggWarsService:modifyOutgoingDamage(attacker, damage)
 	end
 
-	-- Combat tagging: every validated hit marks the attacker (including
-	-- zero-damage knockback like Snowball) so Fall/Void eliminations can
-	-- credit the last hitter. RoundService.eliminatePlayer consumes
-	-- the tag when no direct killer exists.
+	-- Combat tagging: even zero-damage hits (Snowball) tag the attacker so
+	-- Fall/Void eliminations credit the last hitter.
 	if attacker ~= nil then
 		local weapon: string? = nil
 		if attacker.Character ~= nil then
@@ -494,14 +418,12 @@ function CombatService:dealDamage(
 		self.lastAttackers[target] = { Attacker = attacker, Weapon = weapon, Time = os.clock() }
 	end
 
-	-- Fixed per damage type; independent of the hit's damage so zero-damage
-	-- weapons (e.g. Snowball) still deliver full knockback.
+	-- Fixed per damage type, so zero-damage weapons (Snowball) still knock.
 	local knockbackStrength = if damageType == DAMAGE_TYPE_BOW
 		then KNOCKBACK_BASE * PROJECTILE_KNOCKBACK_MULTIPLIER
 		else KNOCKBACK_BASE * MELEE_KNOCKBACK_MULTIPLIER
 
-	-- Zero-damage hits skip health, shield, and elimination entirely and
-	-- only deliver the knockback impulse.
+	-- Zero-damage hits only deliver knockback.
 	if damage <= 0 then
 		if knockbackDirection ~= nil then
 			self.context.outbound:fire(
@@ -519,9 +441,7 @@ function CombatService:dealDamage(
 	local shield = getShield(target)
 	local absorbedDamage = 0
 	if shield > 0 and damageToHealth > 0 then
-		-- Shield health fully absorbs exactly one hit no matter how much
-		-- remains (the original game's rule: even 1 shield point blocks an
-		-- entire hit), then the shield is removed.
+		-- All-or-nothing: even 1 shield point blocks an entire hit, then the shield is removed.
 		absorbedDamage = damageToHealth
 		damageToHealth = 0
 		target:SetAttribute(Attribute.Shield, 0)
@@ -532,10 +452,7 @@ function CombatService:dealDamage(
 	local newHealth = math.max(HealthConstants.MIN_HEALTH, health - damageToHealth)
 	target:SetAttribute(Attribute.Health, newHealth)
 
-	-- Natural regeneration: a hit that actually costs the target health
-	-- restarts their post-damage tick clock, so regeneration only resumes a
-	-- full tick group after they last took damage. A shield-absorbed hit
-	-- costs no health and does not reset the clock.
+	-- Health damage resets the regeneration clock; shield-absorbed hits don't.
 	if damageToHealth > 0 then
 		local regenerationService = self.context.regenerationService
 		if regenerationService ~= nil then
@@ -543,9 +460,7 @@ function CombatService:dealDamage(
 		end
 	end
 
-	-- Power-up hooks: a consumed shield ends the Shield power-up (its single
-	-- guaranteed block is spent), and a LifeSteal attacker heals on every
-	-- validated damaging hit.
+	-- A consumed shield ends the Shield power-up; LifeSteal heals per damaging hit.
 	local powerUpService = self.context.powerUpService
 	if shieldHit and powerUpService ~= nil then
 		powerUpService:onShieldConsumed(target)
@@ -560,10 +475,9 @@ function CombatService:dealDamage(
 		eggWarsService:onDamageDealt(attacker, damageToHealth)
 	end
 
-	-- The number the client shows: health damage when any got through,
-	-- otherwise the amount the shield absorbed.
+	-- Client shows health damage, or the shield-absorbed amount if none got through.
 	local indicatorDamage = if damageToHealth > 0 then damageToHealth else absorbedDamage
-	-- XP/stats tracking (no-op in custom rounds; guarded inside the service).
+	-- No-op in custom rounds; guarded inside the service.
 	local experienceService = self.context.experienceService
 	if experienceService ~= nil then
 		experienceService:onDamage(attacker, target, indicatorDamage)
@@ -595,10 +509,8 @@ function CombatService:dealDamage(
 	end
 end
 
--- The last player to land a validated hit on `target` inside the credit
--- window, plus the item they were holding at hit time. Environmental
--- eliminations (Void/Fall) consume this for killer credit. Returns
--- (attacker, weapon) or nil; stale/left-game tags are dropped here.
+-- Last attacker within the credit window, plus the weapon held at hit time.
+-- Consumed by environmental eliminations for killer credit.
 function CombatService:getLastAttacker(target: Player): (Player?, string?)
 	local tag = self.lastAttackers[target]
 	if tag == nil then
@@ -620,8 +532,7 @@ function CombatService:clearLastAttacker(target: Player)
 	self.lastAttackers[target] = nil
 end
 
--- Round boundaries invalidate every combat tag: a hit from a previous round
--- must never credit an elimination in the next one.
+-- Round boundaries invalidate combat tags.
 function CombatService:clearLastAttackers()
 	table.clear(self.lastAttackers)
 end
@@ -652,8 +563,7 @@ function CombatService:meleeStrike(player: Player, target: Player?)
 	self:dealDamage(player, target, DAMAGE_TYPE_MELEE, damage, targetRoot.Position - attackerRoot.Position)
 end
 
--- Strikes at non-player combat entities (tagged "entity" / "egg") that carry
--- a Health attribute. Dying eggs publish EggEliminated for the kill feed.
+-- Non-player combat entities (tagged "entity"/"egg") with a Health attribute.
 function CombatService:meleeStrikeEntity(player: Player, entity: Model)
 	local attackerRoot, damage = self:canMeleeAttack(player)
 	if attackerRoot == nil or damage == nil then
@@ -745,8 +655,6 @@ function CombatService:meleeStrikeEntity(player: Player, entity: Model)
 	end
 end
 
--- Bow hit entry point (called by ProjectileService on player collisions).
--- Knockback reuses the same system as melee, driven by the arrow's velocity.
 function CombatService:dealProjectileHit(shooter: Player, target: Player, damage: number, direction: Vector3)
 	self:dealDamage(shooter, target, DAMAGE_TYPE_BOW, damage, direction)
 end
@@ -759,8 +667,7 @@ function CombatService:ragdoll(character: Model?)
 	if humanoid == nil then
 		return
 	end
-	-- Keep the corpse on the island: disabling the Dead state stops the
-	-- default auto-respawn cycle while the eliminated player is spectating.
+	-- Disabling the Dead state stops the auto-respawn cycle so the corpse stays.
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 	humanoid.AutoRotate = false
 	humanoid.Health = 0

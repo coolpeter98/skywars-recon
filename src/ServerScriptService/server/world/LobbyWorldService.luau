@@ -1,30 +1,15 @@
 --!strict
 
 -- LobbyWorldService — swaps the visible lobby world for custom-match servers.
---
--- The recovered place ships two lobby worlds:
---   * Workspace/Lobby.rbxm — the normal lobby (adverts, featured cosmetics,
---     display boards, sky text, benches);
---   * ServerStorage/Maps/PregameLobby.rbxm — the compact pre-game waiting
---     lobby (smaller build, its own WorldData spawn/advert/play layout, and
---     its own RandomSpawn SpawnLocations).
---
--- The client's LobbyWorldController finds its world either by waiting for a
--- child named "Lobby" in Workspace at boot (5 s window) or through the
--- JoinWorld event, whose guard accepts (worldModel, "Lobby" | "Pregame").
--- The world carries its type in the LobbyType attribute (the controller
--- defaults a missing attribute to "Lobby").
---
--- This service owns the swap: once a server becomes a custom match
--- (Private runtime role) the normal lobby is retired to ServerStorage and
--- the pre-game lobby is cloned into Workspace under the name "Lobby" with
--- LobbyType "Pregame". Every phase of a custom match then shows the
--- pre-game lobby instead of the normal lobby — waiting between rounds,
--- the Pregame cage countdown, and post-game — because the client's
--- LobbyWorldController shows its world whenever GameState is Pregame or
--- Ended. Clients that boot after the swap find the pre-game lobby through
--- their Workspace "Lobby" lookup; clients that booted before the swap
--- (the Studio local-custom path) are switched over with JoinWorld.
+-- The place ships two lobbies: Workspace/Lobby.rbxm (normal) and
+-- ServerStorage/Maps/PregameLobby.rbxm (compact pre-game waiting lobby).
+-- Once a server becomes a custom match (Private runtime role), the normal
+-- lobby is retired to ServerStorage and the pre-game lobby is cloned into
+-- Workspace named "Lobby" with LobbyType "Pregame" — the client's
+-- LobbyWorldController finds its world via a Workspace "Lobby" lookup at
+-- boot or via the JoinWorld event (guard accepts "Lobby" | "Pregame"), and
+-- shows it whenever GameState is Pregame or Ended. Rojo names the cloned
+-- asset after its file name, hence the rename.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37,19 +22,14 @@ local Attribute = require(ReplicatedStorage.TS.attribute).Attribute
 local LOBBY_WORLD_NAME = "Lobby"
 local PREGAME_LOBBY_ASSET_NAME = "PregameLobby"
 
--- This place has no terrain: below the floating builds (lobby ~Y130+, maps
--- ~Y170+) there is nothing at all. Anyone found below this floor is falling
--- forever; the watchdog logs where they were and rescues them.
+-- No terrain in this place; below the floating builds is endless void.
 local VOID_FLOOR_Y = 100
 local VOID_CHECK_INTERVAL = 0.5
 
 -- The client's JoinWorld guard (t.children) requires these WorldData folders
--- to exist on any world the server pushes. Neither recovered world has all
--- of them (the normal lobby lacks Billboard/Dog/ScavengerProp; the pre-game
--- lobby also lacks SkyText/DisplayBoard), and a failing payload is silently
--- dropped — the client never switches worlds. Complete whichever world is
--- about to be pushed with empty folders (the guard only requires them to
--- exist; no client code reads their contents).
+-- to exist; a failing payload is silently dropped (the client never switches
+-- worlds). Neither recovered world has all of them, and the guard only
+-- checks existence — no client code reads their contents.
 local REQUIRED_WORLD_DATA_FOLDERS =
 	{ "RandomSpawn", "SkyText", "Billboard", "Prefab", "Dog", "ScavengerProp", "DisplayBoard" }
 
@@ -80,12 +60,8 @@ function LobbyWorldService.new(context)
 	}, LobbyWorldService)
 end
 
--- Loads (and caches) the pre-game lobby clone used by setPregame and by the
--- boot-time fallback. Returns nil (with a warning) when the asset is missing
--- from the built place — usually a Rojo sync that never delivered the file.
--- The clone keeps the asset's authored position. Recovered arenas keep their
--- own authored coordinates around world Y=0, while this asset's geometry
--- starts around Y=134, placing the pre-game lobby safely above the map centre.
+-- The clone keeps its authored position (geometry starts ~Y=134, above the
+-- arenas at ~Y=0).
 function LobbyWorldService.ensurePregameAsset(self): Instance?
 	if self.pregameLobby ~= nil then
 		return self.pregameLobby
@@ -104,9 +80,8 @@ function LobbyWorldService.ensurePregameAsset(self): Instance?
 	return pregameLobby
 end
 
--- Retires the normal lobby and puts the pre-game lobby in its place. Safe to
--- call repeatedly and from either private-role transition (reserved-server
--- boot or the Studio local-custom creation): the second call is a no-op.
+-- Idempotent; called from either private-role transition (reserved-server
+-- boot or Studio local-custom creation).
 function LobbyWorldService.setPregame(self): boolean
 	if self.mode == "Pregame" then
 		return true
@@ -126,19 +101,15 @@ function LobbyWorldService.setPregame(self): boolean
 
 	pregameLobby.Parent = Workspace
 	self.mode = "Pregame"
-	-- Clients already on the server (the Studio local-custom path, where the
-	-- swap happens mid-session) switch worlds through JoinWorld; clients that
-	-- boot afterwards find the swapped world via their Workspace "Lobby"
-	-- lookup, so no per-join firing is needed (and re-firing would rebuild
-	-- the world's adverts a second time).
+	-- Existing clients (Studio local-custom path) switch via JoinWorld; later
+	-- boots find the swapped world through their Workspace "Lobby" lookup.
+	-- Re-firing per join would rebuild the world's adverts a second time.
 	for _, player in Players:GetPlayers() do
 		self.context.outbound:fire("JoinWorld", player, pregameLobby, "Pregame")
-		-- Players standing inside the retired lobby have nothing under their
-		-- feet once it moves to ServerStorage; respawn them onto the
-		-- pre-game lobby's own SpawnLocations. On reserved servers the swap
-		-- happens before anyone joins, so this loop is a no-op there.
-		-- LoadCharacter can yield for several seconds in Studio. The world
-		-- switch and custom-state replication must not block behind it.
+		-- Players standing in the retired lobby have nothing underfoot once it
+		-- moves to ServerStorage (reserved servers: no players yet, no-op).
+		-- LoadCharacter can yield for seconds in Studio; don't block the world
+		-- switch or custom-state replication behind it.
 		task.spawn(function()
 			pcall(function()
 				player:LoadCharacter()
@@ -148,8 +119,7 @@ function LobbyWorldService.setPregame(self): boolean
 	return true
 end
 
--- Puts the normal lobby back. Used when a custom-match server returns to
--- plain lobby duty (server shutdown or an emptied Studio custom session).
+-- Used on server shutdown / emptied Studio custom sessions.
 function LobbyWorldService.restoreLobby(self)
 	if self.mode ~= "Pregame" then
 		return
@@ -169,8 +139,7 @@ function LobbyWorldService.restoreLobby(self)
 	self.mode = "Lobby"
 end
 
--- The world currently active for players (the one parented in Workspace, or
--- the last known one while it is hidden in ServerStorage).
+-- The world active for players (in Workspace, or last known while hidden).
 function LobbyWorldService.getActiveWorld(self): Instance?
 	for _, world in { self.pregameLobby, self.normalLobby } do
 		if world ~= nil and world.Parent == Workspace then
@@ -186,12 +155,10 @@ function LobbyWorldService.getActiveWorld(self): Instance?
 	return Workspace:FindFirstChild(LOBBY_WORLD_NAME)
 end
 
--- Visibility is server-owned. The client's own re-parent of the world (its
--- LobbyWorldController moves it between Workspace and ReplicatedStorage) is a
--- local edit on streamed content, which the streaming engine overrides when
--- parts re-stream — the world visibly "comes back" during a match. Moving it
--- server-side is authoritative and immediate: ServerStorage is not
--- replicated, so the world vanishes for every client in the same frame.
+-- ServerStorage is not replicated, so moving the world there hides it from
+-- every client in the same frame. The client's own re-parent of the world is
+-- only a local edit on streamed content and gets overridden when parts
+-- re-stream, so visibility must be owned server-side.
 function LobbyWorldService.hideWorld(self)
 	local world = self:getActiveWorld()
 	if world ~= nil and world.Parent == Workspace then
@@ -207,13 +174,11 @@ function LobbyWorldService.showWorld(self)
 end
 
 function LobbyWorldService.start(self)
-	-- Studio changes a running public lobby into a local custom server in
-	-- place. Replicate the completed pre-game world before that transition
-	-- can happen, so JoinWorld's strict t.children guard never observes a
-	-- newly-parented model before its descendants have reached the client.
-	-- Published public lobbies do not need this extra replicated copy: they
-	-- teleport into a fresh reserved server, where the swap happens before
-	-- any player joins.
+	-- Studio turns a running public lobby into a local custom server in
+	-- place; pre-replicate the completed pre-game world so JoinWorld's strict
+	-- t.children guard never sees a newly-parented model before its
+	-- descendants arrive. Published lobbies teleport into a fresh reserved
+	-- server and don't need this.
 	if RunService:IsStudio() then
 		local pregameLobby = self:ensurePregameAsset()
 		if pregameLobby ~= nil and pregameLobby.Parent == nil then
@@ -221,12 +186,8 @@ function LobbyWorldService.start(self)
 		end
 	end
 
-	-- Boot-time world sanity check. This place has no terrain: everything
-	-- below the floating builds is endless void, so a missing or empty lobby
-	-- world (a lost/unsynced model, a half-applied Rojo sync, a saved
-	-- post-swap place state) strands players falling forever with no error.
-	-- Fall back to the pre-game lobby asset so there is always a world,
-	-- spawn points, and a floor.
+	-- A missing/empty lobby world strands players in the void (no terrain);
+	-- fall back to the pre-game asset so there is always a floor and spawns.
 	local lobby = Workspace:FindFirstChild(LOBBY_WORLD_NAME)
 	if lobby == nil or (lobby:IsA("Model") and #lobby:GetChildren() == 0) then
 		if lobby ~= nil then
@@ -254,8 +215,7 @@ function LobbyWorldService.start(self)
 				"[LobbyWorld] The 'Lobby' world in Workspace has no SpawnLocations — players may spawn in the void. Re-sync Rojo."
 			)
 		end
-		-- One-time world report: when a player ends up in the void, this line
-		-- shows exactly what the world looks like from the server's side.
+		-- For diagnosing a void-rescue later: what the world looked like at boot.
 		if lobby:IsA("Model") then
 			local spawnCount = 0
 			for _, descendant in lobby:GetDescendants() do
@@ -279,18 +239,15 @@ function LobbyWorldService.start(self)
 		end
 	end
 
-	-- Void watchdog: log and rescue anyone below every world. The round's own
-	-- void elimination handles in-match falls; this catches the rest (broken
-	-- spawns, missing geometry, a half-synced world) so nobody stays stuck.
+	-- Void watchdog: rescue anyone below every world. In-match falls are
+	-- RoundService's job (arena-specific VoidY); this catches everything else.
 	self.started = true
 	task.spawn(function()
 		while self.started do
 			for _, player in Players:GetPlayers() do
-				-- Match-owned characters are handled by RoundService's
-				-- arena-specific VoidY elimination. Rescuing them here races that
-				-- loop, steals the elimination, and can teleport a live fighter
-				-- into the lobby mid-round. Eliminated spectators are match-owned
-				-- too and must remain at the arena's spectator position.
+				-- Match-owned characters (Alive/Spectating) belong to RoundService's
+				-- void elimination; rescuing them here races it and can teleport a
+				-- live fighter into the lobby mid-round.
 				if
 					player:GetAttribute(Attribute.Alive) == true
 					or player:GetAttribute(Attribute.Spectating) == true

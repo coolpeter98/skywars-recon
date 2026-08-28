@@ -1,14 +1,9 @@
 --!strict
--- PlayerDataRules
---
--- Pure mapping between the persisted PlayerData document and the runtime
--- client profile. No Roblox API dependencies, so this runs under Lune
--- (tools/test_player_data_rules.luau).
---
--- The persisted document is deliberately NOT the raw client profile shape:
--- progression lives under a versioned Stats namespace (see PlayerDataSchema)
--- so future systems (missions, per-mode history, new season formats) can
--- evolve the document without touching the client's runtime profile.
+-- Pure document <-> runtime profile mapping (no Roblox API; Lune-tested by
+-- tools/test_player_data_rules.luau).
+-- The persisted document is deliberately not the client profile shape:
+-- progression lives under a versioned Stats namespace so future formats can
+-- evolve without touching the runtime profile.
 
 export type QueueStats = {
 	Wins: number,
@@ -72,8 +67,7 @@ function copyQueueStats(source: { [string]: any }): QueueStats
 	return copy
 end
 
--- Applies a loaded document onto the runtime profile. Only the fields the
--- document owns are touched; everything else keeps the client's defaults.
+-- Only touches the fields the document owns; the rest keeps client defaults.
 function applyPlayerData(profile: { [string]: any }, data: PlayerData)
 	local stats = data.Stats
 	profile.Experience = toNumber(stats.Experience, 0)
@@ -111,9 +105,7 @@ function applyPlayerData(profile: { [string]: any }, data: PlayerData)
 	end
 end
 
--- Captures the runtime profile back into a fresh document, preserving
--- anything the document holds that the profile does not model (e.g. seasons
--- other than the current one).
+-- Preserves document-only data the profile doesn't model (e.g. past seasons).
 function capturePlayerData(profile: { [string]: any }, currentData: PlayerData): PlayerData
 	local currentStats = currentData.Stats
 

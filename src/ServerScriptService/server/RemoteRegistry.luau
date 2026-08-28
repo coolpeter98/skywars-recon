@@ -9,11 +9,10 @@ type RemoteMap = { [string]: RemoteEvent }
 local RemoteRegistry = {}
 RemoteRegistry.__index = RemoteRegistry
 
--- Remotes are discovered by their id ATTRIBUTE, never by name (the client
--- waitByAttribute's each UUID). If a half-synced or damaged place is missing
--- the namespace folder or any remote, recreate them here rather than failing:
--- the server boots, the client finds every UUID, and nothing can strand a
--- player mid-boot. The attribute is the wire contract; the Name is cosmetic.
+-- Remotes are matched by their "id" ATTRIBUTE, not Name — the client
+-- waitByAttribute's each UUID, so the attribute is the wire contract.
+-- Recreate a missing namespace/remote instead of failing so clients never
+-- strand mid-boot.
 local function resolveNamespace(namespaceName: string, expectedById: { [string]: string }): RemoteMap
 	local namespace = ReplicatedStorage:FindFirstChild(namespaceName)
 	if namespace == nil then

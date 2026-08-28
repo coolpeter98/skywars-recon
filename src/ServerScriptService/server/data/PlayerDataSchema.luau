@@ -1,16 +1,8 @@
 --!strict
--- PlayerDataSchema
---
--- The Drop schema for the persisted PlayerData document. Drop applies the
--- migration chain to every stored record on read, so the on-disk format can
--- evolve without ever touching the runtime profile shape.
---
--- Evolution protocol:
---   * Never edit the initial value or an existing migration step. Append a
---     new `PlayerDataSchema = Drop.migrate(PlayerDataSchema, function(old) ... end)`
---     line below the previous one, numbered V<next>.
---   * Migrations receive the previous version's document and must return a
---     complete document for the next version.
+-- Drop schema for the persisted PlayerData document.
+-- Migration rules: never edit the initial value or an existing step — append a
+-- new `Drop.migrate` line below (numbered V<next>); each migration receives the
+-- previous document and must return a complete one.
 
 local ServerStorage = game:GetService("ServerStorage")
 

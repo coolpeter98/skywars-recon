@@ -1,39 +1,17 @@
 --!strict
 -- BlockWorldService — server-authoritative voxel world for block breaking.
---
--- The recovered maps (e.g. Airport) are greedy-meshed: runs of same-material
--- block cells are merged into a single axis-aligned Part whose exposed faces
--- carry tiled textures (StudsPerTile = 3, offset 0, one id per
--- material + face across the whole map) and whose hidden faces are
--- texture-culled. This service reconstructs the voxel grid from those parts
--- and re-meshes locally when cells are removed:
---
---   * every block cell is indexed (cell index = world position / 3) to its
---     owning part, item type, and break time;
---   * removals (pickaxe breaks remove one cell; explosions remove a whole
---     sphere) are BATCHED: every part that lost a cell is rebuilt exactly
---     once, and all affected parts are destroyed before any replacement
---     geometry is created, so the replication burst never shows old and new
---     geometry overlapping (the cause of carve flicker);
---   * replacement faces follow the recovered map's own culling rules: a
---     face is textured when any part of it borders air (or a removed cell)
---     and the material ships a texture for that orientation — full-face
---     overdraw on covered patches is the map's style (the shipped Airport
---     has 723 such partially-covered textured faces); cells inside the
---     removed region's bounding box become individual 3x3x3 parts whose 1x1
---     faces cull exactly, and the part's remainder outside the box rebuilds
---     as up to six slabs;
---   * faces of neighbouring parts that a removed cell used to hide get
---     their texture back.
---
--- Player-placed blocks register here too, so mining them goes through the
--- same path. Break progress is accumulated from the client's repeated
--- HitBlock events (fired once per heartbeat while the mouse is held on a
--- block) and replicated back through BlockBreakProgress (crack overlay),
--- BlockBreakStatusCleared, and BlockRemoved. When a block breaks, the mined
--- item is granted to the miner's inventory (explosions grant nothing).
--- Egg Wars is the mode exception: its authored arena cells are immutable to
--- both paths, while player-placed defence blocks remain breakable.
+-- The recovered maps are greedy-meshed: runs of same-material cells are one
+-- Part, exposed faces carry tiled textures (StudsPerTile = 3), hidden faces
+-- are culled. Removals are batched: each affected part is rebuilt exactly
+-- once, and destroyed BEFORE replacement geometry is created so the
+-- replication burst never shows old and new geometry overlapping (carve
+-- flicker). Replacement faces follow the map's own culling rule: textured
+-- when any part of the face borders air/removed cells and the material
+-- ships a texture for that orientation (full-face overdraw on covered
+-- patches is the map's native style). The client fires HitBlock once per
+-- heartbeat while the mouse is held; mined items go to the miner, explosions
+-- grant nothing. Egg Wars: authored arena cells are immutable, player-placed
+-- defence blocks stay breakable.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -69,8 +47,7 @@ local BLOCK_DIMENSION: Vector3 = BlockConstants.BLOCK_DIMENSION
 -- The client gives up on a target after this long without a hit; used to
 -- sweep stale crack overlays server-side.
 local BREAK_HIT_EXPIRE: number = BlockConstants.BLOCK_HIT_EXPIRE
--- Network jitter can inflate the delta between two HitBlock events; clamp it
--- so a lag spike cannot fast-forward a break.
+-- Network jitter can inflate the delta between two HitBlock events.
 local BREAK_HIT_MAX_GAP = 0.25
 -- The client's break raycast reaches 35 studs from the camera; this bound
 -- from the character root covers that plus third-person camera slack.
@@ -78,9 +55,7 @@ local BREAK_MAX_RANGE = 48
 local GRID_TOLERANCE = 0.01
 local SWEEP_INTERVAL_FRAMES = 30
 
--- Neighbour offsets (in cells) and the NormalId name of the neighbour's
--- face that faces the mined cell (a neighbour at +Z shows its -Z face,
--- which Roblox calls Front).
+-- A neighbour at +Z shows its -Z face, which Roblox calls Front.
 local NEIGHBOUR_FACES = {
 	{ Offset = Vector3.new(1, 0, 0), Face = "Left" },
 	{ Offset = Vector3.new(-1, 0, 0), Face = "Right" },
@@ -194,9 +169,8 @@ local function getBreakTime(itemType: string): number
 	return 0.5
 end
 
--- Returns the cell range (inclusive, in cell coordinates) covered by an
--- axis-aligned part whose size is a multiple of the block size, or nil when
--- the part is not cell-aligned.
+-- Returns the inclusive cell range covered by an axis-aligned part sized in
+-- block multiples, or nil when the part is not cell-aligned.
 local function getCellRange(part: BasePart): (Vector3?, Vector3?)
 	local halfSize = part.Size / 2
 	local corner = part.Position - halfSize
@@ -225,8 +199,8 @@ function BlockWorldService.new(context)
 	}, BlockWorldService)
 end
 
--- Egg Wars preserves the authored arena exactly. Blocks placed during the
--- round carry PlacedByUserId and remain normal, breakable defence blocks.
+-- Egg Wars keeps its authored arena intact; PlacedByUserId blocks (defences
+-- placed during the round) stay breakable.
 function BlockWorldService.isImmutableMapEntry(self, entry: VoxelEntry): boolean
 	local eggWarsService = self.context.eggWarsService
 	return eggWarsService ~= nil
@@ -262,9 +236,8 @@ function BlockWorldService.stop(self)
 	end
 end
 
--- Rebuilds the voxel index from a freshly loaded arena model. Clears any
--- previous index, texture registry, and active break sessions (the previous
--- arena no longer exists).
+-- Rebuilds the voxel index from a freshly loaded arena model (clears the
+-- previous index, texture registry, and break sessions).
 function BlockWorldService.rebuild(self, mapModel: Instance)
 	self:clear()
 	for _, descendant in mapModel:GetDescendants() do
@@ -285,10 +258,8 @@ function BlockWorldService.clear(self)
 	end
 end
 
--- Records one block part (map geometry or a player-placed block). Parts that
--- are not full block cells (thin slabs, decor, chest meshes, misaligned
--- geometry) are skipped for indexing but still contribute their face
--- textures to the shared per-material texture registry when they are named
+-- Non-cell parts (thin slabs, decor, chest meshes, misaligned geometry)
+-- are skipped for indexing but still contribute face textures when named
 -- after a block item.
 function BlockWorldService.registerPart(self, part: BasePart, forcedItemType: string?)
 	local itemType = forcedItemType or part.Name
@@ -414,11 +385,7 @@ function BlockWorldService.getRequiredBreakTime(self, player: Player, position: 
 end
 
 -- The client fires HitBlock once per heartbeat while the mouse is held on a
--- block. This accumulates break progress for the player's current target and
--- replicates the crack overlay via BlockBreakProgress; once the accumulated
--- time reaches the block's BreakTime scaled by the held pickaxe's
--- TimeMultiplier, the block is mined, the overlay is cleared, and the mined
--- item is granted to the miner.
+-- block; the deltas between hits accumulate into break progress.
 function BlockWorldService.registerHit(self, player: Player, position: Vector3)
 	local state = self.breakStates[player]
 	if not self:canBreak(player, position) then
@@ -454,10 +421,8 @@ function BlockWorldService.registerHit(self, player: Player, position: Vector3)
 	end
 end
 
--- Carves a spherical explosion out of the voxel world: every block whose
--- cell center lies within `radiusStuds` of `position` is removed in ONE
--- batched pass (no items are granted — the blast destroys, it does not
--- gather). Returns the number of blocks destroyed.
+-- Carves a sphere (cell centers within radiusStuds); destroys, grants no
+-- items. Returns the number of blocks removed.
 function BlockWorldService.mineExplosion(self, position: Vector3, radiusStuds: number): number
 	if radiusStuds <= 0 or radiusStuds ~= radiusStuds or radiusStuds == math.huge then
 		return 0
@@ -498,20 +463,11 @@ function BlockWorldService.mineCell(self, position: Vector3): string?
 	return itemType
 end
 
--- Batched block removal (pickaxe breaks remove one cell; explosions remove
--- a whole sphere). Every part that lost a cell is rebuilt exactly ONCE, and
--- all affected parts are destroyed BEFORE any replacement geometry is
--- created — during replication the client never sees old and new geometry
--- overlapping (the source of the carve flicker).
---
--- Replacement geometry follows the recovered map's own culling rules: a
--- face is textured when any part of it borders air or a removed cell and
--- the material has a texture for that orientation (full-face overdraw on
--- covered patches is the map's style); faces between two blocks stay
--- untextured. Cells inside the removed region's bounding box become
--- individual 3x3x3 parts (their 1x1 faces cull exactly, so the crater
--- interior is overdraw-free); the part's remainder outside that box is
--- rebuilt as up to six slabs.
+-- Batched removal: every affected part is rebuilt exactly once, destroyed
+-- before replacements are created (see module header). Cells inside the
+-- removed region's bounding box become individual 3x3x3 parts (their 1x1
+-- faces cull exactly); the part's remainder outside the box rebuilds as
+-- up to six slabs.
 function BlockWorldService.removeBlocks(self, removedPositions: { Vector3 }): number
 	local removedKeys = {} :: { [string]: Vector3 }
 	local affectedList = {} :: { { itemType: string, part: BasePart, removed: { Vector3 } } }
@@ -547,9 +503,8 @@ function BlockWorldService.removeBlocks(self, removedPositions: { Vector3 }): nu
 		self:remeshPart(affected.part, affected.itemType, affected.removed, removedKeys)
 	end
 
-	-- Faces of neighbouring parts that the removed cells used to hide were
-	-- texture-culled by the generator; re-add the missing ones (full-face,
-	-- per-block tiling — the original map's own overdraw style).
+	-- Re-add faces the removed cells used to hide (add-if-missing; the
+	-- full-face tiling overdraws covered patches like the original map).
 	local removedCount = 0
 	for key in removedKeys do
 		removedCount += 1
@@ -558,9 +513,8 @@ function BlockWorldService.removeBlocks(self, removedPositions: { Vector3 }): nu
 	return removedCount
 end
 
--- Rebuilds one part that lost cells: captures its presentation, clears its
--- cells from the index, destroys it, then creates the final replacement
--- parts (individuals inside the removed bounding box + slabs outside it).
+-- Rebuilds one part that lost cells: capture presentation, clear its cells
+-- from the index, destroy it, then create the replacement parts.
 function BlockWorldService.remeshPart(
 	self,
 	part: BasePart,
@@ -726,9 +680,8 @@ function BlockWorldService.indexBoxCells(self, boxPart: BasePart, itemType: stri
 	end
 end
 
--- Adds a face texture to a part when the material has one for that face
--- (materials like Grass only ship a Top texture; their other faces stay
--- plain, exactly like the recovered map).
+-- Materials like Grass only ship a Top texture; other faces stay plain,
+-- exactly like the recovered map.
 function BlockWorldService.addFaceTexture(self, part: BasePart, itemType: string, faceName: string)
 	local faceTable = self.faceTextures[itemType]
 	local textureId = if faceTable then faceTable[faceName] else nil
@@ -743,10 +696,8 @@ function BlockWorldService.addFaceTexture(self, part: BasePart, itemType: string
 	texture.Parent = part
 end
 
--- The removed cell used to hide the neighbouring part's face, so the map
--- generator texture-culled it. Re-add the texture when it is missing (the
--- full-face, per-block tiling overdraws covered patches exactly like the
--- original map's own partially-covered faces).
+-- The removed cell used to hide the neighbour's face; re-add its texture
+-- when missing.
 function BlockWorldService.exposeNeighbourFaces(self, position: Vector3)
 	local minedCell = toCellVector(position)
 	for _, neighbour in NEIGHBOUR_FACES do

@@ -15,10 +15,9 @@ type CustomGameRecord = CustomGameStore.CustomGameRecord
 local CustomGameService = {}
 CustomGameService.__index = CustomGameService
 
--- CustomGame is what makes a private-server client cross the lobby -> game
--- lifecycle boundary. Repeat the snapshot while the client boots so a
--- one-shot SetValue sent before RoduxController connects cannot strand the
--- player on the lobby UI.
+-- CustomGame.ServerData.InGame is what flips a client from lobby to game
+-- lifecycle. Retry replication while the client boots: a one-shot SetValue
+-- sent before RoduxController connects strands the player on the lobby UI.
 local REPLICATION_RETRY_DELAYS = { 0.5, 1, 2, 4 }
 
 local function cloneDictionary<T>(source: { [string]: T }): { [string]: T }
@@ -68,8 +67,7 @@ function CustomGameService.new(context)
 end
 
 function CustomGameService.notify(_, player: Player, message: string, _: boolean?)
-	-- Custom-game actions do not use the global client Alert surface. Keep
-	-- rejected requests visible to server operators without pushing a toast.
+	-- Custom-game actions deliberately avoid the global client Alert toast.
 	warn(("[CustomGame] %s (%d): %s"):format(player.Name, player.UserId, message))
 end
 
@@ -255,10 +253,9 @@ end
 function CustomGameService.teleportParty(self, owner: Player, partyPlayers: { Player }, record: CustomGameRecord)
 	if RunService:IsStudio() then
 		self.record = record
-		-- Publish the custom snapshot before the replicated role exposes the
-		-- custom dock. The pre-game world transition reloads characters and can
-		-- take several seconds in Studio; without this ordering the Settings
-		-- button renders against a nil CustomGame store during that whole gap.
+		-- Replicate before exposing the private role: the pre-game world
+		-- transition reloads characters (slow in Studio) and the Settings
+		-- button renders against a nil CustomGame store until then.
 		self:replicateAll()
 		self.context.runtimeContext:setPrivate(record.Settings.GameMode, record.Id)
 		self:configureRoundSession()
@@ -521,8 +518,7 @@ function CustomGameService.setPrivacy(self, player: Player, privacy: string)
 end
 
 function CustomGameService.setMap(self, player: Player, mapName: string)
-	-- Map selection is configuration for the next round. Updating it while a
-	-- round is live must not replace the already-loaded arena.
+	-- Applies to the next round only; must not replace a live loaded arena.
 	local record = self:requireOwner(player, true)
 	local adapter = self:getAdapter(record)
 	if record == nil or adapter == nil or not adapter.isMapNameValid(mapName) then
@@ -642,10 +638,9 @@ function CustomGameService.startMatch(self, player: Player)
 		self:replicateAll()
 		return
 	end
-	-- The client only tears down LobbyScreen after it observes
-	-- CustomGame.ServerData.InGame. Publish that transition before
-	-- RoundService emits the pregame countdown, otherwise GameController is
-	-- not mounted yet and the countdown event is lost.
+	-- Client only tears down LobbyScreen after it sees
+	-- CustomGame.ServerData.InGame; publish that before the countdown events,
+	-- or GameController isn't mounted yet and the countdown is lost.
 	self:replicateAll()
 	if not self.context.roundService:startRound() then
 		self:updateLocalRecord(function(currentRecord)
@@ -663,9 +658,8 @@ function CustomGameService.validateAdmission(self, player: Player): boolean
 	local userIdKey = tostring(player.UserId)
 	local deadline = os.clock() + CustomGameConfig.AdmissionValidationTimeout
 	repeat
-		-- Lobby servers add admissions after the reserved server has already
-		-- cached its startup record. Always validate arrivals against the shared
-		-- record so the first join attempt sees that newly committed admission.
+		-- Lobby servers can commit admissions after this server cached its
+		-- startup record; re-read the shared record for each arrival.
 		local record = self.store:getRecord(cachedRecord.Id)
 		if record ~= nil then
 			self.record = record
@@ -700,8 +694,8 @@ function CustomGameService.initializePlayer(self, player: Player)
 	then
 		return
 	end
-	-- Let PlayerSessions deliver its one reset-style bootstrap before mounting
-	-- the CustomGame-dependent scoreboard listeners and syncing pregame time.
+	-- Let PlayerSessions deliver its bootstrap reset before scoreboard
+	-- listeners mount and pregame time syncs.
 	task.wait()
 	if player.Parent ~= Players or self.record == nil then
 		return
@@ -709,9 +703,8 @@ function CustomGameService.initializePlayer(self, player: Player)
 	local record = self.record :: CustomGameRecord
 	local teamId = record.TeamAssignments[tostring(player.UserId)]
 	player:SetAttribute("TeamId", teamId)
-	-- Replicate CustomGame first: the client mounts the private-game
-	-- scoreboard listeners from this value before RoundService synchronizes a
-	-- countdown already in progress.
+	-- CustomGame first: the client mounts scoreboard listeners from it before
+	-- RoundService syncs a countdown already in progress.
 	self:replicatePlayer(player)
 	self.context.roundService:initializePlayer(player)
 	self:persistPresence()
@@ -758,9 +751,9 @@ function CustomGameService.onPlayerRemoving(self, player: Player)
 		end
 		local remainingPlayers = {}
 		for _, candidate in Players:GetPlayers() do
-			-- PlayerRemoving may run before Roblox removes departing Players from
-			-- Players. Exclude every removal already in flight so simultaneous
-			-- departures still tear down the browser record.
+			-- PlayerRemoving may run before Roblox removes the departing player
+			-- from Players; exclude in-flight removals so simultaneous
+			-- departures still tear down the record.
 			if candidate ~= player and not self.leavingPlayers[candidate] and candidate.Parent == Players then
 				table.insert(remainingPlayers, candidate)
 			end
@@ -855,8 +848,7 @@ function CustomGameService.stop(self)
 	local recordToRemove = self.record
 	self.record = nil
 	if recordToRemove ~= nil then
-		-- BindToClose reaches this path even when PlayerRemoving cleanup never
-		-- ran (crash/migration/forced shutdown). Do not leave its public lease.
+		-- BindToClose can reach this without PlayerRemoving cleanup having run.
 		self.store:removeRecord(recordToRemove.Id, recordToRemove)
 	end
 	for _, connection in self.connections do

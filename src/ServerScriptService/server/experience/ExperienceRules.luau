@@ -1,16 +1,9 @@
 --!strict
--- ExperienceRules
---
--- Pure XP mathematics for match rewards. This module deliberately has no
--- Roblox API dependencies so it runs under Lune (tools/test_experience_rules.luau).
---
--- Sources of truth:
---   * Per-mode tables (kills / assists / position) come from the shared client
---     module TS/game/game-mode. Trios, Quads, and Octos never shipped a table,
---     so they fall back to the Duos values. Duels (Bridge) never shipped one
---     either and uses the fixed DUELS_EXPERIENCE below.
---   * The original server's TimePlayed rate was lost with the server code, so
---     TIME_PLAYED_* is a documented reconstruction choice (see constants).
+-- Pure XP math for match rewards (no Roblox API; Lune-tested by
+-- tools/test_experience_rules.luau).
+-- Per-mode tables come from the shared client module TS/game/game-mode.
+-- Trios/Quads/Octos and Duels never shipped tables — see the fallbacks below.
+-- The TimePlayed rate is a reconstruction choice (original server lost).
 
 export type ExperienceTable = {
 	ExperiencePerKill: number,
@@ -69,8 +62,7 @@ local CAUSE_KEYS = {
 	"SummerScavengerHunt",
 }
 
--- Resolves the per-mode experience table for a game mode, applying the
--- documented fallbacks. Returns nil for modes that award nothing.
+-- Applies the per-mode fallbacks; nil means the mode awards nothing.
 function resolveExperience(gameMode: string, gameModes: { [string]: GameModeDefinition }): ExperienceTable?
 	local definition = gameModes[gameMode]
 	if definition ~= nil and definition.Experience ~= nil then
@@ -88,9 +80,8 @@ function resolveExperience(gameMode: string, gameModes: { [string]: GameModeDefi
 	return nil
 end
 
--- Placement XP for a 1-based finish position. Positions past the table's
--- last entry clamp to it (mirrors how full-team rounds used the finite
--- per-position tables); nil/out-of-range positions award nothing.
+-- 1-based finish position; past-the-end positions clamp to the table's last
+-- entry. nil/out-of-range positions award nothing.
 function getPositionExperience(experience: ExperienceTable, position: number?): number
 	if position == nil or position < 1 then
 		return 0
@@ -109,8 +100,7 @@ function getTimePlayedExperience(secondsPlayed: number): number
 	return math.min(math.floor(secondsPlayed * TIME_PLAYED_XP_PER_SECOND + 0.5), TIME_PLAYED_XP_CAP)
 end
 
--- Combines a player's round statistics into the per-cause breakdown the
--- client's GameStats payload consumes.
+-- Builds the per-cause breakdown the client's GameStats payload consumes.
 function computeMatchExperience(
 	experience: ExperienceTable,
 	kills: number,

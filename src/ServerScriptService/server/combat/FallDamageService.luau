@@ -1,35 +1,10 @@
 --!strict
 
--- Server-authoritative fall damage. The recovered game does not use
--- velocity to compute fall damage: it compares the Y level of the block the
--- player fell from with the Y level of the block they land on, and falls
--- shorter than 10 blocks deal nothing (both verified against the real
--- game). This service reconstructs that rule:
---
---   * every FALL_CHECK_INTERVAL seconds, each alive player's support
---     surface is found by raycasting straight down into
---     Workspace.BlockContainer (the arena plus player-placed blocks — the
---     same whitelist the client's block raycasts use);
---   * a surface within GROUNDED_MAX_DISTANCE below the root part counts as
---     the ground the player is standing on, unless they are falling fast
---     enough to just be passing it (velocity gates *detection only* — the
---     damage itself is computed purely from block levels);
---   * the surface's block level (FallDamageRules.getBlockLevel) is
---     remembered while grounded, so leaving the ground records "the block
---     you fell from";
---   * on landing, blocksFallen = fellFromLevel - landingLevel feeds
---     FallDamageRules.getFallDamage, and any damage flows through
---     CombatService:dealFallDamage -> the shared dealDamage pipeline
---     (armour mitigation, all-or-nothing shield absorption, the
---     DamageDealt indicator, regeneration reset, and elimination with the
---     existing last-attacker kill credit).
---
--- Spawns and round resets never hurt: damage only applies to a fall that
--- began from a measured standing surface, so a character spawning in
--- mid-air (recovered maps place spawn points above their islands) lands for
--- free. If something shoves a player upward mid-fall (the Teleporter item,
--- upward explosions), the highest level reached becomes the new fall start
--- so the fall is never inflated.
+-- Fall damage uses block-level comparison (fall-from level vs landing level),
+-- never velocity — verified against the real game; falls under 10 blocks do
+-- nothing (see FallDamageRules). Support raycasts target only
+-- Workspace.BlockContainer (arena + placed blocks, the client's whitelist).
+-- Velocity gates detection only, never damage math.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -50,19 +25,13 @@ type FallState = {
 local FallDamageService = {}
 FallDamageService.__index = FallDamageService
 
--- Sampling cadence of the grounded check (drift-free, like
--- RegenerationService's ticker). Fast enough that a landing is never missed
--- between samples: after touchdown the player stays grounded.
+-- Sampling cadence of the grounded check.
 local FALL_CHECK_INTERVAL = 0.05
 
--- A support surface no farther than this below the root part counts as the
--- ground the player is standing on (hip height plus slack against the
--- 3-stud block grid).
+-- Hip height plus slack against the 3-stud block grid.
 local GROUNDED_MAX_DISTANCE = 4.5
 
--- Falling faster than this while near a surface means the player is passing
--- it, not standing on it. Detection only — damage is computed from block
--- levels, never from velocity.
+-- Falling faster than this past a surface means passing it, not standing on it.
 local FALLING_SPEED_THRESHOLD = 20
 
 -- How far below the root part the support raycast reaches (deep enough for
@@ -72,18 +41,13 @@ local SUPPORT_RAY_DISTANCE = 200
 function FallDamageService.new(context: FallDamageContext)
 	return setmetatable({
 		context = context,
-		-- Per-player fall tracking. Weak-keyed so entries never outlive
-		-- their player.
 		states = setmetatable({}, { __mode = "k" }) :: { [Player]: FallState },
 		playerRemovingConnection = nil :: RBXScriptConnection?,
 		started = false,
 	}, FallDamageService)
 end
 
--- The block level of the surface directly under the root part when the
--- player is standing on it (nil when nothing nearby supports them). Only
--- the arena and player-placed blocks count — they all live inside
--- Workspace.BlockContainer, the whitelist the client's block raycasts use.
+-- Block level of the surface under the root, or nil if unsupported.
 function FallDamageService:getSupportLevel(root: BasePart): number?
 	local blockContainer = Workspace:FindFirstChild("BlockContainer")
 	if blockContainer == nil then
@@ -117,8 +81,7 @@ function FallDamageService:updatePlayer(player: Player, root: BasePart)
 
 	if grounded then
 		if not state.grounded and state.fallStartLevel ~= nil then
-			-- Touchdown: compare the block they fell from with the block
-			-- they landed on — the game's own rule, no velocity involved.
+			-- Touchdown: fall-from level vs landing level, no velocity involved.
 			local blocksFallen = state.fallStartLevel - supportLevel
 			if blocksFallen > 0 then
 				local damage = FallDamageRules.getFallDamage(blocksFallen)
@@ -135,15 +98,13 @@ function FallDamageService:updatePlayer(player: Player, root: BasePart)
 		return
 	end
 
-	-- Airborne (or falling fast past a nearby surface). Leaving the ground
-	-- keeps the last support level as "the block they fell from".
+	-- Airborne; leaving the ground records the fall-start level.
 	if state.grounded then
 		state.grounded = false
 	end
 	if state.fallStartLevel ~= nil then
-		-- Upward displacement mid-fall (teleports, upward explosions) must
-		-- not inflate the fall: the highest level reached becomes the new
-		-- fall start.
+		-- Upward displacement (teleports, explosions) raises the fall start so
+		-- the fall is never inflated.
 		local currentLevel = FallDamageRules.getRootLevel(root.Position.Y)
 		if currentLevel > state.fallStartLevel then
 			state.fallStartLevel = currentLevel
@@ -154,8 +115,6 @@ end
 function FallDamageService:tick()
 	local combatService = self.context.combatService
 	if combatService == nil or not combatService:isInRound() then
-		-- Outside a running round no fall state is meaningful; dropping it
-		-- every step also guarantees each round starts clean.
 		self:clearAll()
 		return
 	end
@@ -173,8 +132,7 @@ function FallDamageService:tick()
 	end
 end
 
--- Spawning into a round drops any previous fall state so the first landing
--- (spawn points sit above their islands) is always free.
+-- Spawn (points sit above islands) lands for free.
 function FallDamageService:resetPlayer(player: Player)
 	self.states[player] = nil
 end
@@ -192,9 +150,7 @@ function FallDamageService.start(self)
 		return
 	end
 	self.started = true
-	-- Drift-free cadence: the next check time is absolute, so a late step
-	-- (studio hitches, task scheduler granularity) self-corrects instead of
-	-- accumulating delay the way a plain task.wait loop does.
+	-- Drift-free cadence: absolute next-tick time self-corrects after hitches.
 	task.spawn(function()
 		local nextTickTime = os.clock() + FALL_CHECK_INTERVAL
 		while self.started do

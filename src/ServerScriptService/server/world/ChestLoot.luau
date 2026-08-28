@@ -1,37 +1,17 @@
 --!strict
 
--- ChestLoot — random loot tables for tiered chests (tiers 1-4).
---
--- Four tiers map onto the recovered chest models (ChestTierOne..Four in
--- ReplicatedStorage/Misc): tiers 1-2 stock the team islands, tiers 3-4 the
--- center island.
---
--- Roll model (reconstructed from player-recorded chest samples):
---  * every chest first receives its tier's `Always` items (team blocks are
---    always present on tiers 1-3, the bronze sword on tier 1),
---  * then `MinCount..MaxCount` extra entries are drawn from the tier's pool,
---    weighted, without replacement across entries,
---  * a pooled entry rolls its quantity uniformly over its own `Min..Max`
---    range (Snowball 1-2 is a fair coin, TeamConcrete 9-12/12-16 uniform),
---  * picking the same item type twice stacks both rolls into one slot; only
---    TeamConcrete can repeat (a second pool entry on tiers 2-3) — that is the
---    source of the observed 24/29-block tier-2 chests and 25-block tier-3
---    chest,
---  * finished items are placed into random distinct slots of the 18-slot
---    chest instead of consecutive slots, so loot appears scattered.
---
--- Weights are fitted to the observed per-item frequencies: the iron sword
--- shows up in most tier-2 chests and the diamond sword in most tier-4 chests,
--- while helmets/leggings stay rare — those rates cannot come from an
--- equal-weight pool. Entries without a Weight default to 1.
---
--- Naming notes from the sample data: "team blocks" = TeamConcrete, "boots" =
--- the tier's Leggings item (the game has no boots armour), "pearl" =
--- Teleporter, potions = the SpeedBoost/JumpBoost/Shield/LifeSteal power-up
--- items. Tier 2 pools only SpeedBoost; tier 3 pools SpeedBoost, JumpBoost and
--- Shield but no explosives, onyx or lifesteal; tier 4 pools the speed, jump,
--- shield and lifesteal potions with equal weight plus the Capybara, but never
--- Dynamite, FishingRod or Adrenaline, and never team blocks.
+-- ChestLoot — random loot tables for tiered chests (tiers 1-4; tiers 1-2
+-- stock the team islands, 3-4 the center island). Roll model reconstructed
+-- from player-recorded chest samples: the tier's `Always` items are
+-- guaranteed, then `MinCount..MaxCount` weighted entries are drawn from the
+-- pool without replacement, each rolling its quantity uniformly over its own
+-- `Min..Max`. Repeated rolls of the same type stack into one slot (only
+-- TeamConcrete can repeat — the source of the observed 24/29-block tier-2
+-- and 25-block tier-3 stacks). Finished items land in random distinct slots
+-- of the 18-slot chest. Weights are fitted to observed frequencies (the
+-- iron/diamond sword leads its tier; armour stays rare — an equal-weight
+-- pool can't produce those rates). "boots" in the sample data = Leggings,
+-- "pearl" = Teleporter.
 
 export type ChestLootEntry = {
 	Type: string,
@@ -59,10 +39,7 @@ type TierConfig = {
 local CHEST_SIZE = 18
 
 local TIER_CONFIGS: { [number]: TierConfig } = {
-	-- Island tier 1: bronze gear, team blocks and a few snowballs.
-	-- Always: team blocks (9-12) + the bronze sword (both appear in every
-	-- recorded tier-1 chest). The five pool entries are equally weighted and
-	-- drawn 2-5 times, giving 4-7 items total as observed.
+	-- Island tier 1: the Always entries appear in every recorded tier-1 chest.
 	{
 		Always = {
 			{ Type = "TeamConcrete", Min = 9, Max = 12 },
@@ -78,12 +55,8 @@ local TIER_CONFIGS: { [number]: TierConfig } = {
 		MinCount = 2,
 		MaxCount = 5,
 	},
-	-- Island tier 2: iron gear. The iron sword leads (recorded in 8/10
-	-- chests, so it carries most of the pool weight); chestplates, bows,
-	-- speed potions and arrows are common; pickaxes, helmets, leggings and
-	-- snowballs are rare. Only the speed potion appears in this tier. A
-	-- second TeamConcrete entry lets a chest stack another 12-16 blocks onto
-	-- the guaranteed stack (the observed 24 and 29 stacks).
+	-- Island tier 2: iron sword recorded in 8/10 chests, hence its weight;
+	-- the second TeamConcrete entry produces the observed 24/29-block stacks.
 	{
 		Always = {
 			{ Type = "TeamConcrete", Min = 12, Max = 16 },
@@ -103,10 +76,7 @@ local TIER_CONFIGS: { [number]: TierConfig } = {
 		MinCount = 2,
 		MaxCount = 4,
 	},
-	-- Center tier 3: gold/diamond gear. Diamond swords, bows, arrows and
-	-- pearls lead; speed/jump/shield potions and the rest of the gear are
-	-- rare. No explosives, onyx gear or lifesteal potions. The extra
-	-- TeamConcrete entry produces the observed 25-block stack.
+	-- Center tier 3: extra TeamConcrete entry = the observed 25-block stack.
 	{
 		Always = {
 			{ Type = "TeamConcrete", Min = 12, Max = 16 },
@@ -130,10 +100,7 @@ local TIER_CONFIGS: { [number]: TierConfig } = {
 		MinCount = 2,
 		MaxCount = 5,
 	},
-	-- Center tier 4: top-tier loot. The diamond sword dominates (7/10
-	-- chests); diamond chestplates/leggings and pearls are common; the speed,
-	-- jump, shield and lifesteal potions can all appear with equal weight.
-	-- No team blocks, Dynamite, FishingRod or Adrenaline, and no bow/arrows.
+	-- Center tier 4: diamond sword dominates (7/10 recorded chests).
 	{
 		Always = {},
 		Pool = {

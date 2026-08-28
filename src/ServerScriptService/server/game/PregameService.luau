@@ -1,41 +1,23 @@
 --!strict
 
--- PregameService — the two-phase pre-game that opens every game round,
--- everything driven through surfaces the recovered client already ships:
+-- PregameService — two-phase pre-game built entirely on recovered client surfaces.
 --
--- Phase 1 (the pre-game lobby countdown): the round opens in the Pregame
--- state while the players wait in the pre-game lobby world. The client's
--- scoreboard shows its "Starting in N..." countdown for exactly this state —
--- GameStatus counts GameConstants.PREGAME_DURATION down from the
--- GameStateChangeTime event — so the server fires GameStateChangeTime(0)
--- and waits the same 10 seconds the client displays.
+-- Phase 1: lobby countdown. The client's scoreboard renders "Starting in N..."
+-- only for the Pregame state, counting GameConstants.PREGAME_DURATION down
+-- from GameStateChangeTime — the server fires GameStateChangeTime(0) and waits
+-- exactly that long.
 --
--- Phase 2 (the caged countdown): once the scoreboard countdown ends, the
--- caller teleports everyone to the arena and this service cages every
--- assigned player at their spawn. The 4-second centre-screen cooldown is
--- the client's Title system: TitleController opens a big centred
--- TitleGui text (default colour Color3.fromHex("77cfff")) per Title event,
--- playing the title's SoundBefore exactly when it appears. The beats are
--- 4 (silent), 3 / 2 / 1 (the recovered Countdown.THREE/TWO/ONE voices),
--- and GO fires at the exact release moment — its sound and the cages
--- dropping are simultaneous.
+-- Phase 2: cages + centre-screen countdown via the client's Title system
+-- (TitleController's TitleGui, the recovered 77cfff blue). Beats are
+-- 4 (silent), 3/2/1 (Countdown voices); GO fires the same tick the cages drop.
 --
--- Bridge score resets reuse only the cage/containment mechanics. Their
--- five-second cadence is three recovered tick sounds followed by the
--- recovered cage-release sound; the score result owns the centre title.
+-- Cages are byte-for-byte the client's GlassCage design (six 11x11x1
+-- "SpawnGlass" parts, six studs from the centre), parented to Workspace.Cages
+-- — outside BlockContainer so the client's block raycasts and the fall-damage
+-- support raycast never touch them (release drop is a free landing).
 --
--- Cages: byte-for-byte the client's GlassCage design (six 11x11x1
--- "SpawnGlass" parts, SmoothPlastic, Reflectance 1, Transparency 0.8, one
--- per axis normal six studs from the cage centre), parented to
--- Workspace.Cages — the folder the original place ships empty for exactly
--- this — outside BlockContainer so the client's block raycasts and the
--- fall-damage support raycast never touch them (the release drop onto the
--- island is a free landing).
---
--- Containment: while the countdown runs, a heartbeat re-teleports any
--- player found outside their cage back inside and re-cages freshly
--- respawned characters — a player clipping through the glass or a cheater
--- escaping is always put back in their cage until GO.
+-- A containment heartbeat re-teleports anyone outside their cage and re-cages
+-- freshly respawned characters until GO.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -58,20 +40,16 @@ local CAGE_NORMALS = {
 	Vector3.new(0, 1, 0),
 	Vector3.new(0, -1, 0),
 }
--- The walls sit six studs from the cage centre and are one stud thick, so
--- the walkable interior spans half this from the centre on every axis.
+-- Walls sit six studs from centre and are one stud thick.
 local CAGE_INTERIOR_HALF = 5.5
 
 -- The client's cage convention: the cage CFrame marks the character's feet
--- (CosmeticCageDisplayController stands the character at position +
--- halfHeight). Spawn CFrames hold the HumanoidRootPart instead, so the cage
--- floor drops to foot height; the character settles onto the glass floor and
--- falls onto their island at GO.
+-- (CosmeticCageDisplayController stands the character at position + halfHeight).
+-- Spawn CFrames hold the HumanoidRootPart, so drop the cage floor to foot height.
 local SPAWN_ROOT_TO_FEET = 2.5
 
 local CAGES_FOLDER_NAME = "Cages"
 
--- How often the containment heartbeat checks caged players.
 local CONTAINMENT_INTERVAL = 0.1
 
 local COUNTDOWN_SOUNDS = {
@@ -86,9 +64,8 @@ type CageCountdownStyle = "Opening" | "BridgeReset"
 local PregameService = {}
 PregameService.__index = PregameService
 
--- The client counts the scoreboard's "Starting in N..." down from
--- GameStateChangeTime + GameConstants.PREGAME_DURATION. Phase 1 runs exactly
--- that long so the display reaches zero when the cages appear.
+-- Client counts the scoreboard down from GameStateChangeTime + PregameDuration;
+-- phase 1 runs exactly that long so it hits zero as the cages appear.
 local function getClientPregameDuration(): number
 	return RoundConfig.PregameDuration
 end
@@ -136,8 +113,7 @@ function PregameService.sendTitle(self, text: string, soundId: string?)
 		Duration = 1,
 	}
 	if soundId ~= nil and soundId ~= "" then
-		-- TitleController plays SoundBefore the moment the title appears, so
-		-- each countdown voice lands exactly on its number.
+		-- TitleController plays SoundBefore the moment the title appears.
 		title.SoundBefore = soundId
 	end
 	self.context.outbound:fireAll("Title", title)
@@ -162,9 +138,8 @@ function PregameService.destroyArena(self)
 	table.clear(self.cages)
 end
 
--- Begins phase 1: the pre-game lobby countdown. Fires the scoreboard's
--- GameStateChangeTime(0) so every client counts "Starting in N..." from now,
--- and returns the phase length so the caller can schedule the cage teleport.
+-- Begins phase 1; returns the phase length so the caller can schedule the
+-- cage teleport.
 function PregameService.startLobbyCountdown(self): number
 	self:clear()
 	local duration = getClientPregameDuration()
@@ -174,8 +149,8 @@ function PregameService.startLobbyCountdown(self): number
 	return duration
 end
 
--- Begins phase 2: cages every assigned player at their spawn, starts the
--- centre-screen Title countdown, and runs the containment heartbeat until GO.
+-- Begins phase 2: cage everyone, run the Title countdown + containment
+-- heartbeat until GO.
 function PregameService.begin(
 	self,
 	players: { Player },
@@ -186,7 +161,7 @@ function PregameService.begin(
 	if duration <= 0 then
 		return false
 	end
-	-- Restart safety: a re-started round replaces any previous pre-game.
+	-- A re-started round replaces any previous pre-game.
 	self:clear()
 	self.phase = "Cages"
 	self.active = true
@@ -211,8 +186,7 @@ function PregameService.begin(
 				SpawnCFrame = spawnCFrame,
 				Center = feetPosition + CAGE_ORIGIN_OFFSET,
 			}
-			-- A player who resets mid-countdown respawns at a lobby
-			-- SpawnLocation; put their new character straight back in the cage.
+			-- Resets respawn at a lobby SpawnLocation; re-cage the new character.
 			table.insert(
 				self.characterConnections,
 				player.CharacterAdded:Connect(function(character)
@@ -226,9 +200,8 @@ function PregameService.begin(
 		end
 	end
 
-	-- Containment heartbeat: anyone outside their cage (clipped through the
-	-- glass, noclip, a teleport exploit) is put straight back inside with
-	-- their momentum zeroed, and a deleted character is reloaded.
+	-- Containment heartbeat: anyone outside their cage goes back with zeroed
+	-- momentum; deleted characters are reloaded.
 	task.spawn(function()
 		while self.active and self.generation == generation do
 			for player, entry in self.cagedEntries do
@@ -261,9 +234,8 @@ function PregameService.begin(
 	end)
 
 	if self.countdownStyle == "BridgeReset" then
-		-- A five-second reset places its three ticks at t=2/3/4 and the release
-		-- sound at t=5. SoundPlayed keeps the point result title visible for its
-		-- full three seconds instead of replacing it with numeric Title events.
+		-- Ticks at t=2/3/4, release sound at t=5. SoundPlayed (not Title events)
+		-- keeps the point-result title visible for its full three seconds.
 		local firstTickTime = math.max(0, duration - BRIDGE_RESET_TICK_COUNT)
 		for tickIndex = 1, BRIDGE_RESET_TICK_COUNT do
 			local tickTime = firstTickTime + tickIndex - 1
@@ -276,8 +248,6 @@ function PregameService.begin(
 			end
 		end
 	else
-		-- The normal opening countdown begins at four and retains the recovered
-		-- THREE/TWO/ONE voices before GO.
 		for secondsRemaining = math.ceil(duration), 1, -1 do
 			local visibleSeconds = secondsRemaining
 			local elapsed = duration - visibleSeconds
@@ -295,8 +265,7 @@ function PregameService.begin(
 	return true
 end
 
--- The GO moment: the release title and its sound fire at the exact moment
--- the cages drop. The caller flips the round into InGame right after.
+-- GO: title/sound fire the same tick the cages drop; caller flips to InGame.
 function PregameService.finish(self)
 	if not self.active then
 		return
@@ -314,8 +283,7 @@ function PregameService.finish(self)
 	self.countdownStyle = nil
 end
 
--- Stops any running pre-game and removes its world without a GO sound —
--- round aborts and service shutdown.
+-- Silent cleanup (round aborts, shutdown) — no GO sound.
 function PregameService.clear(self)
 	if self.active then
 		self.active = false
@@ -327,10 +295,9 @@ function PregameService.clear(self)
 	self.countdownStyle = nil
 end
 
--- A player arriving mid-pre-game (spectators admitted during a round) gets
--- the remaining time: during the lobby countdown the scoreboard display is
--- re-based so it ends with everyone else's; during the caged countdown they
--- get the current centre-screen number.
+-- A player arriving mid-pre-game (e.g. a spectator admitted late) gets the
+-- remaining time: re-based scoreboard during the lobby countdown, current
+-- centre-screen number during the cage countdown.
 function PregameService.syncPlayer(self, player: Player)
 	if self.phase == "Lobby" then
 		local remaining = math.max(self.phaseEndTime - os.clock(), 0)

@@ -1,41 +1,16 @@
 --!strict
 -- MapService — builds and owns the active arena for any game round.
 --
--- Primary path: imported maps. A map is a Model under
--- ServerStorage.Maps.<GameType>.<MapName> (the original game's convention,
--- read by ReplicatedStorage.TS.game.map["map-info"]). The tree below is the
--- SkyWars layout; WorldData-driven adapters such as Egg Wars provide their
--- own spawn reader and defer their empty runtime-folder population.
---
---	<MapName> (Model)
---	├── WorldData (Folder)
---	│	├── Spawn (CFrameValue)          — authored world-spawn metadata
---	│	├── Chest (Folder) > Tier (Folder)
---	│	│	├── 1..4 (Folder)             — one folder per chest tier
---	│	│	│	└── <n> (CFrameValue)      — chest position (+ yaw rotation); the
---	│	│	                                CFrameValue's name equals its tier
---	│	├── GameSpawn (Folder)           — per-direction island surface spots
---	│	└── ContestSpawn (Folder)        — per-direction contest spots (unused)
---	├── SpawnLocations (Folder)          — SpawnLocation parts named 1..12
---	├── SpawnLocation                    — mirrors WorldData.Spawn (anchor)
---	├── Chests (Folder)                  — generator-placed chest templates
---	│                                      (no animation rig; discarded)
---	└── Default / N / N E / N P / ...    — island geometry models
---
--- SpawnLocations are numbered 1..12 and map 1:1 onto the twelve SkyWars teams
--- (Solo uses all twelve); modes with fewer teams spread their spawns evenly
--- around the map. Chests are spawned fresh from the recovered
--- ReplicatedStorage/Misc/ChestTierOne..Four prefabs (they carry the
--- AnimationController/Animator rig the client's chest component requires)
--- at each CFrameValue, with the tier's loot rolled from ChestLoot.
---
--- Random selects one of the valid imported maps. The per-mode placeholder is
--- only a recovery path when no valid imported map can be loaded.
---
--- Imported arenas are cloned as Workspace.BlockContainer.Map and retain the
--- selected catalog id in their SelectedMapName attribute. Placeholders keep
--- the name "Placeholder". Both are siblings of player-placed blocks because
--- the client's block raycast whitelists exactly Workspace.BlockContainer.
+-- Primary path: imported maps at ServerStorage.Maps.<GameType>.<MapName>
+-- (the original game's convention, read by ReplicatedStorage.TS.game.map["map-info"]).
+-- SkyWars layout: WorldData (Spawn/Chest.Tier.1..4/GameSpawn CFrameValues),
+-- SpawnLocations 1..12 mapping 1:1 onto the twelve SkyWars teams, and island
+-- geometry models. Chests are spawned fresh from the ReplicatedStorage/Misc
+-- ChestTierOne..Four prefabs, which carry the AnimationController rig the
+-- client's chest component requires. Random picks from valid imported maps;
+-- the placeholder is only a recovery path. Arenas clone to
+-- Workspace.BlockContainer.Map (client block raycast whitelists exactly
+-- Workspace.BlockContainer), catalog id in the SelectedMapName attribute.
 
 local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
@@ -61,10 +36,9 @@ export type LoadedMap = {
 	VoidY: number,
 }
 
--- Recovered maps are already authored around world origin. Keeping those
--- coordinates places every arena below the pre-game lobby (whose floor is at
--- roughly Y=134) and preserves the maps' native three-stud block grid. This
--- origin is only used by the generated recovery placeholder.
+-- Recovered maps are authored around world origin; keeping those coordinates
+-- keeps arenas below the pre-game lobby (floor ~Y=134) and on the 3-stud grid.
+-- Only the recovery placeholder uses this.
 local MAP_ORIGIN = Vector3.zero
 local BLOCK_SIZE = 3
 local BUILD_HORIZONTAL_PADDING = 36
@@ -76,9 +50,6 @@ local PLATFORM_BLOCK_NAME = "StoneBricks"
 local PLACED_BLOCK_TAG = "block:placed"
 local TEMPLATE_VERSION = 5
 local CHEST_ASSET_NAMES = { "ChestTierOne", "ChestTierTwo", "ChestTierThree", "ChestTierFour" }
--- The placeholder chests sat with their base 1.5 studs below their position;
--- real chest models are placed with the same base height so they sit on the
--- platform instead of floating or sinking.
 local CHEST_BASE_OFFSET_FROM_POSITION = 1.5
 
 local MapService = {}
@@ -98,13 +69,8 @@ local function createPart(name: string, size: Vector3, cframe: CFrame, color: Co
 	return part
 end
 
--- Clones a recovered chest prefab (ReplicatedStorage/Misc) and places it so
--- its bounding-box base sits `baseOffset` studs below the given CFrame and its
--- box center lands on the CFrame's X/Z. Placeholder chests pass 1.5 (their
--- historical base height); real-map chests pass 0 so the base rests exactly on
--- the floor the generator's CFrameValue marks. The prefab ships with its own
--- AnimationController/Animator rig, which the server drives when the chest is
--- opened. Returns nil if the asset is missing.
+-- Places a cloned chest prefab so its bounding-box base sits `baseOffset`
+-- studs below `cframe` (chests are yaw-only, so the AABB is exact).
 local function createChest(name: string, cframe: CFrame, tier: number, parent: Instance, baseOffset: number): Model?
 	local misc = ReplicatedStorage:FindFirstChild("Misc")
 	local assetName = CHEST_ASSET_NAMES[tier] or "Chest"
@@ -116,9 +82,6 @@ local function createChest(name: string, cframe: CFrame, tier: number, parent: I
 	local chest = asset:Clone()
 	chest.Name = name
 
-	-- Place the bounding-box bottom at cframe.Position.Y - baseOffset,
-	-- horizontally centered on the CFrame (chests are yaw-rotated only, so
-	-- the axis-aligned bounding box is exact).
 	local boundingCFrame, boundingSize = chest:GetBoundingBox()
 	local boundingOffset = boundingCFrame.Position - chest:GetPivot().Position
 	local bottomY = cframe.Position.Y - baseOffset
@@ -291,8 +254,8 @@ function MapService.ensureTemplate(self, gameMode: string): Model
 	return buildTemplate(gameMode, modeFolder)
 end
 
--- Reads the map's anchor position (WorldData.Spawn CFrameValue, falling back
--- to the top-level SpawnLocation part that mirrors it).
+-- Reads the map's anchor (WorldData.Spawn, falling back to the top-level
+-- SpawnLocation part that mirrors it).
 local function getAnchorPosition(mapAsset: Model): Vector3?
 	local worldData = mapAsset:FindFirstChild("WorldData")
 	if worldData ~= nil then
@@ -337,9 +300,8 @@ local function getImportedMapNames(gameMode: string): { string }
 	return mapNames
 end
 
--- Tries to load an imported map into `blockContainer`. Returns nil when
--- no such map is imported (or the map is malformed) so load() can fall back
--- to the placeholder arena.
+-- Tries to load an imported map into `blockContainer`; returns nil (or a
+-- destroyed map) on failure so load() falls back to the placeholder arena.
 function MapService.loadMap(self, gameMode: string, mapName: string, blockContainer: Instance): LoadedMap?
 	local adapter = ModeRegistry.get(gameMode)
 	if adapter == nil then
@@ -361,23 +323,18 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 	end
 
 	local map = mapAsset:Clone()
-	-- The live server always exposes the active imported arena at
-	-- Workspace.BlockContainer.Map. Preserve the catalog id separately for
-	-- settings, diagnostics, and round logs.
+	-- The live server always exposes the active arena as Workspace.BlockContainer.Map.
 	map.Name = "Map"
 	map:SetAttribute("SelectedMapName", mapName)
 	map:SetAttribute("Placeholder", false)
 
-	-- The recovered assets already use their intended game-world coordinates.
-	-- Do not PivotTo a synthetic anchor here: PivotTo consumes an absolute
-	-- model pivot, not a transform. Since most maps have a saved pivot at
-	-- Y=1.5 (Airport happens to use Y=0), doing so shifted their geometry off
-	-- the client's three-stud grid and moved every arena above the lobby.
+	-- Do not PivotTo a synthetic anchor: PivotTo consumes an absolute model
+	-- pivot, not a transform, and most maps have a saved pivot at Y=1.5, which
+	-- shifted them off the client's 3-stud grid.
 	map.Parent = blockContainer
 
-	-- Most modes read numbered SpawnLocations. WorldData-driven modes can
-	-- provide their own reader because their empty runtime folders are
-	-- populated only when players move from the lobby into cages.
+	-- Most modes read numbered SpawnLocations; WorldData-driven modes provide
+	-- their own reader and populate their runtime folders later (at cage time).
 	local teamIds = adapter.getTeamIds(gameMode)
 	local spawnPositions: { [string]: CFrame } = {}
 	local importedSpawnReader = adapter.getImportedSpawnPositions
@@ -433,10 +390,8 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 		spawnLocationsFolder:Destroy()
 	end
 
-	-- The top-level anchor SpawnLocation mirrors WorldData.Spawn; it must not
-	-- act as a default Roblox spawn after the map has been consumed. Deferred
-	-- modes keep it until population so their authored runtime shape matches
-	-- the recovered server snapshot during the pre-game lobby.
+	-- Anchor SpawnLocation mirrors WorldData.Spawn; kill it so it never acts
+	-- as a default Roblox spawn. Deferred modes keep it until population.
 	if not usesDeferredWorldPopulation then
 		for _, child in map:GetChildren() do
 			if child:IsA("SpawnLocation") and child.Name == "SpawnLocation" then
@@ -445,10 +400,9 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 		end
 	end
 
-	-- Discard the generator-placed chest templates: they carry no animation
-	-- rig (the client's chest component requires one) and their baked
-	-- ProximityPrompts would dead-end. Fresh prefab chests are spawned below
-	-- at the WorldData.Chest.Tier CFrameValues instead.
+	-- Discard the generator-placed chest templates: no animation rig (the
+	-- client's chest component needs one) and baked ProximityPrompts. Fresh
+	-- prefab chests are spawned at the WorldData.Chest.Tier CFrameValues below.
 	local worldData = map:FindFirstChild("WorldData")
 	if not usesDeferredWorldPopulation then
 		local chestsFolder = map:FindFirstChild("Chests")
@@ -467,11 +421,8 @@ function MapService.loadMap(self, gameMode: string, mapName: string, blockContai
 					for _, cframeValue in tierGroup:GetChildren() do
 						if cframeValue:IsA("CFrameValue") then
 							chestIndex += 1
-							-- The prefab's lock sits on its +Z side, opposite the
-							-- map generator's convention (the map's own chests
-							-- face their lock along the CFrameValue's look
-							-- vector), so yaw the prefab 180° after the value's
-							-- rotation.
+							-- The prefab's lock sits on its +Z side, opposite the map
+							-- generator's convention, hence the 180° yaw.
 							createChest(
 								("Chest_T%d_%d"):format(tier, chestIndex),
 								cframeValue.Value * CFrame.Angles(0, math.pi, 0),
@@ -539,8 +490,7 @@ function MapService.load(self, gameMode: string, selectedMapName: string): Loade
 	for _, descendant in placeholderMap:GetDescendants() do
 		if descendant:IsA("Model") and descendant:GetAttribute("Inventory") ~= nil then
 			CollectionService:AddTag(descendant, "block:chest")
-			-- The cached template carries one loot roll from its build time;
-			-- re-roll per round so every match gets fresh chest contents.
+			-- Cached template carries a stale loot roll; re-roll per round.
 			local tier = descendant:GetAttribute("ChestTier")
 			if type(tier) == "number" then
 				descendant:SetAttribute("Inventory", HttpService:JSONEncode(ChestLoot.getContents(tier)))
@@ -580,9 +530,8 @@ function MapService.unload(self)
 				placedBlock:Destroy()
 			end
 		end
-		-- Safety net: remove any arena left over from an interrupted round.
-		-- Active arenas are the only BlockContainer children carrying the
-		-- SelectedMapName attribute (player-placed blocks never do).
+		-- Safety net for arenas left over from interrupted rounds (only
+		-- arenas carry SelectedMapName; placed blocks never do).
 		for _, child in blockContainer:GetChildren() do
 			if child:GetAttribute("SelectedMapName") ~= nil then
 				child:Destroy()

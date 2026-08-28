@@ -1,15 +1,8 @@
 --!strict
--- PlayerDataService
---
--- Owns player persistence through Drop. One Drop session is opened per
--- joining player; reads are applied onto the runtime profile and writes are
--- queued updates that Drop flushes with its own retry/locking (ACID).
---
--- Lifecycle:
---   * PlayerAdded  -> load (session start + read + apply to profile)
---   * PlayerRemoving -> save + session stop (flushes the update queue)
---   * autosave every AUTOSAVE_SECONDS while a session is active
---   * game:BindToClose is handled inside Drop (stops every session)
+-- PlayerDataService: per-player Drop persistence. Reads apply onto the runtime
+-- profile; writes are queued Drop updates (Drop handles flushing, retry, and
+-- BindToClose). The default profile replicated at join is replaced when the
+-- datastore read completes.
 
 local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
@@ -43,9 +36,7 @@ function PlayerDataService.getKey(_: PlayerDataService, player: Player): string
 	return tostring(player.UserId)
 end
 
--- Starts the Drop session for a player and applies the stored document onto
--- their runtime profile. Runs off-thread; the default profile the bootstrap
--- already replicated is replaced once the read completes.
+-- Off-thread session start + read; replaces the bootstrap default profile.
 function PlayerDataService.load(self: PlayerDataService, player: Player)
 	if self.loading[player] or player.Parent ~= Players then
 		return
@@ -104,9 +95,7 @@ function PlayerDataService.load(self: PlayerDataService, player: Player)
 	end)
 end
 
--- Queues a save of the runtime profile. Drop applies the update to the
--- session cache immediately and flushes to the datastore on its own clock,
--- so callers never wait.
+-- Queued save: Drop applies to the session cache immediately, flushes itself.
 function PlayerDataService.save(self: PlayerDataService, player: Player)
 	if player.Parent ~= Players then
 		return
@@ -131,8 +120,8 @@ function PlayerDataService.save(self: PlayerDataService, player: Player)
 	end
 end
 
--- PlayerRemoving hook: final save, then stop the session (flushes the queue).
--- PlayerSessions calls this before removing the session itself.
+-- Final save, then stop the session (flushes the queue). PlayerSessions calls
+-- this before removing the session itself.
 function PlayerDataService.onPlayerRemoving(self: PlayerDataService, player: Player)
 	self:save(player)
 	local key = self:getKey(player)

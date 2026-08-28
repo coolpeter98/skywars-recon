@@ -1,41 +1,11 @@
 --!strict
 
--- Recreates the server half of the client's player nametags. The nametag UI
--- itself is built entirely by the client: Flamework's CharacterComponent
--- (StarterPlayerScripts/TS/components/character-component.luau) attaches to
--- every instance carrying the CollectionService tag "character" and portals a
--- React BillboardGui above the HumanoidRootPart (avatar icon, rank/title,
--- display name, level badge, and the health bar or lobby stats row). It skips
--- the local player's own character.
---
--- CollectionService tags replicate server -> client, so the original server
--- must have tagged each spawned character; without the tag the client
--- component is never instantiated and no nametag appears. This service:
---
---   * tags every character with "character" on spawn (and re-tags anything
---     that removes the tag while the character is still the player's active
---     character),
---   * suppresses the Roblox native overhead name/health label
---     (Humanoid.DisplayDistanceType = None, replicated) so only the custom
---     client nametag shows — the recovered client never does this itself,
---   * publishes the display attributes the nametag reads:
---       Level     - ExperienceUtil.getLevel(profile.Experience) (shared)
---       Wins      - profile.Stats summed across every per-queue entry
---       Kills     - profile.Stats summed across every per-queue entry
---       WinStreak - profile.Stats summed across every per-queue entry
---       Rank      - the first known rank key found in profile.Ranks
---                   (accepts both list and map forms)
---       Title     - the equipped title cosmetic
---                   (profile.Cosmetics.Active.Title)
---
--- Every one of those client reads is nil-guarded, so a missing value degrades
--- to "?" / zero instead of erroring. TeamId / Health / Shield / Alive /
--- Spectating (team color, health bar, and character visibility) are owned by
--- RoundService and CombatService already.
---
--- Call refreshAttributes(player) again whenever the session profile changes
--- (e.g. from the future EquipCosmetic / persistence layers) so the nametag
--- tracks the new Level / stats / rank / title.
+-- Server half of the nametags. The UI is client-built: the client's
+-- CharacterComponent mounts on CollectionService tag "character" and reads the
+-- Level/Wins/Kills/WinStreak/Rank/Title attributes (all nil-guarded client-side).
+-- This service tags spawned characters, hides the native overhead label, and
+-- publishes those attributes from the session profile. Call refreshAttributes
+-- again whenever the profile changes (e.g. from a future EquipCosmetic layer).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -80,10 +50,8 @@ local function sumStats(profile: { [string]: any }): (number, number, number)
 	return wins, kills, winStreak
 end
 
--- profile.Ranks has no surviving reader besides the nametag, so its exact
--- shape is unknown: accept a list of rank keys ({"ADMIN", ...}) or a map
--- ({["ADMIN"] = true, ...}) and return the first key the shared Ranks table
--- knows about.
+-- profile.Ranks' exact shape is unknown (no surviving reader): accept a list
+-- of rank keys or a map, and return the first key the shared Ranks table knows.
 local function getRankKey(profile: { [string]: any }): string?
 	local ranks = profile.Ranks
 	if type(ranks) ~= "table" then
@@ -130,9 +98,8 @@ function NametagService.new(context: NametagContext)
 	}, NametagService)
 end
 
--- Recomputes every nametag display attribute from the player's session
--- profile. Safe to call any number of times; missing profile fields leave the
--- corresponding attribute unset (the client renders "?" / zero).
+-- Recomputes the display attributes from the session profile; missing fields
+-- just leave the attribute unset (client renders "?" / zero).
 function NametagService:refreshAttributes(player: Player)
 	local session = self.context.playerSessions:get(player)
 	if session == nil then
@@ -162,10 +129,8 @@ function NametagService:ensureCharacterTag(character: Model)
 	end
 end
 
--- Hides the Roblox default overhead name/health label. Setting it server-side
--- replicates to every viewer (including the owner); the client only ever
--- renders its custom nametag. Client-created dummy models are untouched —
--- they are not real players, so the native nametag system ignores them anyway.
+-- Server-side so it replicates to every viewer; the client only renders its
+-- custom nametag.
 function NametagService:suppressNativeNametag(character: Model)
 	task.spawn(function()
 		local humanoid = character:WaitForChild("Humanoid", 10)
@@ -209,10 +174,8 @@ function NametagService:start()
 		end
 		self.characterConnections[player] = nil
 	end)
-	-- Self-heal: only this service tags real player characters, so re-apply
-	-- the tag if anything removes it while the model is still the player's
-	-- active character. (Client-side tags on cosmetic dummies never reach the
-	-- server, so previews are unaffected.)
+	-- Self-heal the tag if something removes it from a live character (only
+	-- this service tags real players, so cosmetic dummies are unaffected).
 	self.tagRemovedConnection = CollectionService:GetInstanceRemovedSignal(CHARACTER_TAG):Connect(function(instance)
 		local character = instance :: Model
 		local player = Players:GetPlayerFromCharacter(character)

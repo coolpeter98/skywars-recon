@@ -1,27 +1,13 @@
 --!strict
 
--- Server-authoritative projectile simulation for every ranged weapon.
+-- Server-side projectile simulation. The client charges locally and fires
+-- FireProjectile(direction, strength); we validate, consume ammo, broadcast
+-- ProjectileFired, and simulate with the same speed/acceleration as the
+-- client's FastCast. Per-type collision behavior lives in HIT_BEHAVIORS.
 --
--- The client charges a ranged weapon locally and, on release, fires
--- `FireProjectile(direction, strength)`. This service validates the shooter
--- (alive, holding a ranged item, off that weapon's cooldown, holding ammo when
--- the weapon requires it, finite non-zero direction, strength in [0, 1]),
--- consumes ammo authoritatively, then replicates the shot with
--- `ProjectileFired` and simulates the flight using the same speed and
--- acceleration the client's FastCast uses.
---
--- Collisions end the flight via `ProjectileTerminated`. An environment hit on
--- a weldable projectile (Arrow) lets the client finish its own visual
--- simulation so the arrow welds; player hits and everything else clean the
--- visual up immediately. Per-projectile behavior (damage, knockback,
--- explosions, teleports, pulls) lives in the HIT_BEHAVIORS registry keyed by
--- the projectile item type, so a new projectile type is one registry entry.
---
--- The client may locally predict its own Arrow (same speed and acceleration)
--- and pass an identifier suffix with `FireProjectile`; this service echoes it
--- back as `<UserId>:<suffix>` so the prediction is reconciled instead of
--- rendered twice. Every other projectile type is only rendered from the
--- server broadcast (the client predicts nothing for them).
+-- Arrow is the only client-predicted projectile type: the client passes an
+-- identifier suffix that we echo back as "<UserId>:<suffix>" so its local
+-- render is reconciled instead of duplicated.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -42,14 +28,12 @@ local MAX_SEGMENT_LENGTH = 2
 local MAX_STEP_DELTA = 0.25
 local MAX_PREDICTION_ID_LENGTH = 64
 
--- The client's block grid: one block cell is a 3-stud cube. The recovered
--- projectile ExplosionRadius is expressed in block units (Capybara and
--- Dynamite both carry 3 → a sphere roughly six blocks side-to-side).
+-- Recovered ExplosionRadius is in block units (Capybara/Dynamite = 3, i.e.
+-- ~6 blocks across); a block cell is 3 studs.
 local BLOCK_SIZE: number = BlockConstants.BLOCK_SIZE
 
--- The subset of the shared item module's projectile definition this service
--- reads. The full definitions carry cosmetic fields (particles, sounds,
--- viewport options) that are irrelevant to the server simulation.
+-- Only the projectile-simulation fields of the shared item definition; the
+-- rest is cosmetics the server never touches.
 export type ProjectileData = {
 	Damage: number?,
 	WeldOnCollide: boolean?,
@@ -89,9 +73,8 @@ export type Projectile = {
 	raycastParams: RaycastParams,
 }
 
--- What hit behaviors are handed: the service state they may read, never its
--- public API. Keeps behaviors trivially testable and independent of method
--- layout.
+-- Hit behaviors get the raw service state (not its API) so they stay
+-- independent of method layout.
 export type ProjectileServiceState = {
 	context: any,
 	activeProjectiles: { [string]: Projectile },
@@ -99,9 +82,8 @@ export type ProjectileServiceState = {
 	heartbeatConnection: RBXScriptConnection?,
 }
 
--- A hit behavior decides what a collision does and whether the client should
--- finish its own visual simulation (`true` = let the client weld, used by
--- projectiles whose WeldOnCollide is enabled).
+-- Handlers return true to let the client finish its own visual simulation
+-- (welding the projectile), false to clean the visual up immediately.
 export type HitBehavior = {
 	onPlayerHit: ((self: ProjectileServiceState, projectile: Projectile, target: Player) -> boolean)?,
 	onEnvironmentHit: ((self: ProjectileServiceState, projectile: Projectile, position: Vector3) -> boolean)?,
@@ -142,8 +124,8 @@ local function getPlayerFromHit(hitInstance: Instance): Player?
 	return Players:GetPlayerFromCharacter(model)
 end
 
--- Casts a ray from `from` to `to`, subdividing the span into short segments so
--- a fast projectile cannot tunnel through a thin block or player hitbox.
+-- Short segments so a fast projectile can't tunnel through thin blocks or
+-- player hitboxes.
 local function castSegment(from: Vector3, to: Vector3, params: RaycastParams): RaycastResult?
 	local delta = to - from
 	local distance = delta.Magnitude
@@ -165,9 +147,8 @@ local function castSegment(from: Vector3, to: Vector3, params: RaycastParams): R
 	return nil
 end
 
--- Applies a projectile's damage to a hit player. Damage 0 (Snowball) still
--- delivers the fixed projectile knockback through CombatService's zero-damage
--- path; the impulse direction is the projectile's travel velocity.
+-- Zero-damage projectiles (Snowball) still knock back via CombatService's
+-- zero-damage path.
 local function dealPlayerHit(self: ProjectileServiceState, projectile: Projectile, target: Player)
 	local combatService = self.context.combatService
 	if combatService == nil then
@@ -180,10 +161,8 @@ local function dealPlayerHit(self: ProjectileServiceState, projectile: Projectil
 	combatService:dealProjectileHit(projectile.shooter, target, damage, projectile.velocity)
 end
 
--- Behavior for projectile types without an explicit registry entry: deal the
--- projectile's damage to hit players, and mirror the client's weld default
--- (WeldOnCollide == nil treats the projectile as weldable). Arrow relies on
--- this default on purpose.
+-- Default for types without a registry entry. Mirrors the client's weld
+-- default (nil WeldOnCollide = weldable); Arrow relies on this.
 local DEFAULT_HIT_BEHAVIOR: HitBehavior = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
 		dealPlayerHit(self, projectile, target)
@@ -212,8 +191,8 @@ local function applyHit(self: ProjectileServiceState, projectile: Projectile, hi
 	return false
 end
 
--- Plays a projectile's ExplosionSound at a position through the client-side
--- SoundPlayed pipeline (the client renders no explosion audio of its own).
+-- The client plays no explosion audio of its own, so the server fires the
+-- recovered ExplosionSound through SoundPlayed.
 local function playExplosionSound(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
 	local soundId = projectile.data.ExplosionSound
 	if soundId == nil then
@@ -224,21 +203,10 @@ local function playExplosionSound(self: ProjectileServiceState, projectile: Proj
 	})
 end
 
--- Spawns a one-shot particle burst from a projectile's recovered
--- ExplosionParticles definition. The client renders flight ParticleTrails
--- itself, but no client code consumes ExplosionParticles, so the server owns
--- every impact burst (explosions, snowball impacts, ...); it is cosmetic only.
---
--- The burst is produced through continuous emission (a high Rate for a few
--- frames, then Rate 0): ParticleEmitter:Emit() calls made on the server do
--- not replicate to clients, while regular emission does. The anchor must
--- stay alive until the last emitted particle's lifetime expires — destroying
--- it earlier kills the remaining visible particles.
---
--- `scale` and `lightInfluence` are optional presentation overrides (size,
--- speed and count all follow `scale`; the size curve's shape — e.g. snow
--- melting — is preserved since every keypoint scales together). The
--- recovered config itself is never rewritten.
+-- The client renders flight trails but nothing consumes ExplosionParticles,
+-- so the server owns impact bursts. Emitted via continuous emission because
+-- ParticleEmitter:Emit() on the server does not replicate. The anchor must
+-- outlive the longest particle lifetime or the visible particles die with it.
 local BURST_EMIT_SECONDS = 0.1
 local BURST_DEFAULT_COUNT = 50
 local BURST_DEFAULT_LIFETIME = NumberRange.new(0.5, 1)
@@ -266,15 +234,12 @@ local function spawnParticleBurst(
 	anchor.Parent = Workspace
 
 	local emitter = Instance.new("ParticleEmitter")
-	-- Every optional config field is nil-guarded: assigning nil to a
-	-- ParticleEmitter property (e.g. Acceleration on configs without it, like
-	-- the snowball's) errors and kills the whole burst.
+	-- Assigning nil to a ParticleEmitter property errors, so every optional
+	-- config field is nil-guarded (e.g. the snowball has no Acceleration).
 	if config.Color ~= nil then
 		emitter.Color = config.Color
 	end
-	-- Every original-game particle used the recovered sparkle texture by
-	-- default (ParticleModule defaults emitter.Texture to RobloxImage.PARTICLE,
-	-- "rbxassetid://9834778781"); without it bursts render as plain squares.
+	-- Default texture: without it bursts render as plain squares.
 	emitter.Texture = config.Texture or RobloxImage.PARTICLE
 	if config.Size ~= nil and scale ~= 1 then
 		local keypoints = {}
@@ -318,10 +283,9 @@ local function spawnParticleBurst(
 	end)
 end
 
--- Shoves every valid enemy within the projectile's KnockbackRadius with the
--- full fixed projectile impulse, away from the explosion center. Uniform with
--- every other combat source: no self hits, no teammate hits, alive targets
--- only. AoE damage is the caller's concern (Dynamite deals none).
+-- Full fixed projectile impulse to every valid enemy within KnockbackRadius,
+-- away from the blast. Same uniform rules as all combat: no self/teammate
+-- hits, alive only. AoE damage is the caller's concern.
 local function explodeKnockback(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
 	local knockbackRadius = projectile.data.KnockbackRadius
 	local combatService = self.context.combatService
@@ -349,10 +313,9 @@ local function explodeKnockback(self: ProjectileServiceState, projectile: Projec
 	end
 end
 
--- Applies AoE explosion damage with a linear falloff from full damage at the
--- impact point to zero at ExplosionRadius. Same target rules as the knockback
--- (no self/teammate hits, alive targets only). Damage routes through
--- CombatService without an impulse — the blast already shoved these players.
+-- Linear falloff from full damage at the impact point to zero at
+-- ExplosionRadius. Routes through CombatService without an impulse — the
+-- blast already knocked these players back.
 local function explodeDamage(self: ProjectileServiceState, projectile: Projectile, position: Vector3, damage: number)
 	local explosionRadius = projectile.data.ExplosionRadius
 	local combatService = self.context.combatService
@@ -381,13 +344,8 @@ local function explodeDamage(self: ProjectileServiceState, projectile: Projectil
 	end
 end
 
--- Carves a spherical hole out of the voxel world around the impact point.
--- The recovered ExplosionRadius is in block units (3 → roughly six blocks
--- side-to-side); the block world re-culls the carved faces through the same
--- split/re-cull path pickaxe mining uses. Player-placed blocks are carved
--- like map blocks, and nothing is granted to the shooter. BlockWorldService
--- preserves authored Egg Wars terrain while still allowing placed defence
--- blocks to be destroyed.
+-- ExplosionRadius is in blocks; BlockWorldService re-culls carved faces via
+-- the same path pickaxe mining uses, and grants nothing to the shooter.
 local function breakBlocks(self: ProjectileServiceState, projectile: Projectile, position: Vector3)
 	local blockWorldService = self.context.blockWorldService
 	local explosionRadius = projectile.data.ExplosionRadius
@@ -397,10 +355,8 @@ local function breakBlocks(self: ProjectileServiceState, projectile: Projectile,
 	blockWorldService:mineExplosion(position, explosionRadius * BLOCK_SIZE)
 end
 
--- Shared explosion entry point for explosive projectiles: one-time sound and
--- particle burst at the impact point, AoE knockback, optional AoE damage
--- (Dynamite none, Capybara linear falloff), and a spherical block carve
--- (ExplosionRadius, in blocks) through the voxel world.
+-- Shared explosive entry point: sound, burst, knockback, optional AoE damage,
+-- spherical block carve.
 local function explode(self: ProjectileServiceState, projectile: Projectile, position: Vector3, damage: number?)
 	playExplosionSound(self, projectile, position)
 	spawnParticleBurst(position, projectile.data.ExplosionParticles)
@@ -411,9 +367,6 @@ local function explode(self: ProjectileServiceState, projectile: Projectile, pos
 	breakBlocks(self, projectile, position)
 end
 
--- Moves the shooter's character to the projectile's impact point, exactly as
--- the client places nothing and defines no offset. Velocity is zeroed so the
--- arrival is clean.
 local function teleportShooter(_: ProjectileServiceState, projectile: Projectile, position: Vector3)
 	local root = getPlayerRoot(projectile.shooter)
 	if root == nil then
@@ -423,11 +376,9 @@ local function teleportShooter(_: ProjectileServiceState, projectile: Projectile
 	root.AssemblyLinearVelocity = Vector3.zero
 end
 
--- Pulls the hooked player toward the caster: the recovered KnockbackScalar
--- (-1.5, 1, -1.5) negates the fish's travel direction (X/Z pull back toward
--- the fisherman) while keeping the vertical component. The scalar multiplies
--- the projectile's velocity component-wise, faithfully to the recovered item
--- data, so a fully-charged cast pulls harder than a limp one.
+-- Recovered KnockbackScalar (-1.5, 1, -1.5) multiplies the fish's velocity
+-- component-wise, so X/Z pull back toward the fisherman while vertical is
+-- kept and a fully-charged cast pulls harder.
 local function pullPlayer(self: ProjectileServiceState, projectile: Projectile, target: Player)
 	local scalar = projectile.data.KnockbackScalar
 	if scalar == nil then
@@ -448,9 +399,8 @@ local function pullPlayer(self: ProjectileServiceState, projectile: Projectile, 
 	self.context.outbound:fire("DamageImpulse", target, impulse)
 end
 
--- Cooldowns live in CombatService's shared registry (one system for every
--- combat action). Replicated cooldowns reach the client through
--- CooldownUpdated, keyed by the held weapon's item name.
+-- Cooldowns share CombatService's registry. `true` in setCooldown replicates
+-- via CooldownUpdated, keyed by the held weapon's item name.
 function ProjectileService.isOnCooldown(self, player: Player, key: string): boolean
 	return self.context.combatService:isOnCooldown(player, key)
 end
@@ -535,8 +485,7 @@ function ProjectileService.fireProjectile(
 		return false
 	end
 
-	-- Weapons without RequiresAmmo consume their projectile item type (the
-	-- client's default is RequiresAmmo = true); FishingRod opts out.
+	-- RequiresAmmo defaults true on the client; FishingRod opts out.
 	local requiresAmmo = ranged.RequiresAmmo ~= false
 	local inventoryService = self.context.inventoryService
 	if requiresAmmo and inventoryService:getItemQuantity(player, projectileType) < 1 then
@@ -579,8 +528,8 @@ function ProjectileService.fireProjectile(
 		raycastParams = raycastParams,
 	}
 
-	-- Weapons without an explicit Cooldown (Bow, Capybara, Dynamite) use the
-	-- shared micro-cooldown; the client charges them over DrawTime anyway.
+	-- No explicit Cooldown (Bow, Capybara, Dynamite) → shared micro-cooldown;
+	-- the client gates them by DrawTime anyway.
 	local cooldown = if ranged.Cooldown ~= nil then ranged.Cooldown else ProjectileConstants.COOLDOWN
 	self:setCooldown(player, heldItemType, cooldown)
 	self.context.outbound:fireAll(
@@ -664,8 +613,8 @@ function ProjectileService.stop(self)
 	self:clearAll()
 end
 
--- Constructs a service instance. Declared after the method definitions so
--- `typeof(ProjectileService)` captures the complete service type.
+-- Declared after the methods so `typeof(ProjectileService)` sees the whole
+-- service type.
 function ProjectileService.new(context): typeof(ProjectileService)
 	return setmetatable({
 		context = context,
@@ -681,19 +630,13 @@ function ProjectileService.registerHitBehavior(projectileType: string, behavior:
 	HIT_BEHAVIORS[projectileType] = behavior
 end
 
--- ────────────────────────── Projectile behaviors ───────────────────────────
--- One entry per projectile item type; a behavior decides what a collision does
--- (see HitBehavior). The registry lives here so every weapon's behavior is
--- visible in one place; registerHitBehavior exists for future extension.
+-- One entry per projectile item type; add new weapons here (or via
+-- registerHitBehavior from another module).
 
--- Snowball: deals no damage (Projectile.Damage = 0) but still delivers the
--- fixed projectile knockback impulse through CombatService's zero-damage
--- path, and bursts with its recovered ExplosionParticles on every impact
--- (the client plays its ImpactSound and renders the flight trail itself).
--- The burst uses the recovered config as-is — the earlier invisibility was
--- the nil-Acceleration assignment error, not the config. WeldOnCollide =
--- false, so environment hits clean the visual up. Its 0.5 s cooldown and
--- speed come from the item definition automatically.
+-- Snowball: zero damage, fixed knockback via the zero-damage path, plus its
+-- recovered ExplosionParticles burst on every impact (client plays the
+-- ImpactSound and flight trail itself). WeldOnCollide = false, so environment
+-- hits clean the visual up.
 HIT_BEHAVIORS.Snowball = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
 		dealPlayerHit(self, projectile, target)
@@ -706,10 +649,8 @@ HIT_BEHAVIORS.Snowball = {
 	end,
 }
 
--- Dynamite: a knockback explosion with no damage — Projectile.Damage = 0,
--- so the blast shoves within KnockbackRadius and carves a spherical hole in
--- the block world (ExplosionRadius, in blocks). Explodes on any collision,
--- player or environment.
+-- Dynamite: knockback-only blast (Projectile.Damage = 0) plus spherical
+-- block carve; explodes on any collision.
 HIT_BEHAVIORS.Dynamite = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, _: Player)
 		explode(self, projectile, projectile.position)
@@ -721,10 +662,8 @@ HIT_BEHAVIORS.Dynamite = {
 	end,
 }
 
--- Capybara: an explosive AoE — Projectile.Damage = 42 applied with a linear
--- falloff across ExplosionRadius (3), plus the same full-impulse knockback
--- blast as Dynamite within KnockbackRadius (5), plus a spherical block carve
--- (ExplosionRadius, in blocks) through the voxel world.
+-- Capybara: explosive AoE — 42 damage with linear falloff across
+-- ExplosionRadius (3) plus the Dynamite-style knockback and block carve.
 HIT_BEHAVIORS.Capybara = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, _: Player)
 		explode(self, projectile, projectile.position, projectile.data.Damage)
@@ -736,9 +675,7 @@ HIT_BEHAVIORS.Capybara = {
 	end,
 }
 
--- Teleporter: no damage — moves the shooter to the exact impact point on any
--- collision (player or environment), then cleans the visual up. Its 15 s
--- cooldown comes from the item definition.
+-- Teleporter: moves the shooter to the exact impact point on any collision.
 HIT_BEHAVIORS.Teleporter = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, _: Player)
 		teleportShooter(self, projectile, projectile.position)
@@ -750,10 +687,8 @@ HIT_BEHAVIORS.Teleporter = {
 	end,
 }
 
--- Fish (FishingRod): no damage — pulls the hooked player toward the caster
--- with the recovered KnockbackScalar impulse. The hook does not weld
--- (WeldOnCollide = false), so environment hits clean the visual up. Its 1 s
--- cooldown and RequiresAmmo = false come from the item definition.
+-- Fish (FishingRod): pulls the hooked player toward the caster; no weld on
+-- environment hits (WeldOnCollide = false).
 HIT_BEHAVIORS.Fish = {
 	onPlayerHit = function(self: ProjectileServiceState, projectile: Projectile, target: Player)
 		pullPlayer(self, projectile, target)
